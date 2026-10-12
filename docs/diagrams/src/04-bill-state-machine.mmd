@@ -1,0 +1,29 @@
+stateDiagram-v2
+    direction LR
+
+    [*] --> Idle
+    Idle: idle
+    Idle: OLED amount and BLE READY
+    Tap: tap
+    Tap: one-shot receiver armed for 15 seconds
+    Pending: pending
+    Pending: invoice or consignment session active
+    Settled: settled
+    Settled: confirmed balances displayed
+    Error: error
+    Error: session cleared and operator informed
+
+    Idle --> Pending: diagnostic command implemented
+    Idle --> Tap: debounced press edge
+    Tap --> Pending: exact chunk run accepted locally
+    Tap --> Idle: 15 second timeout second press or connection failure
+    Pending --> Settled: valid consignment and one confirmation
+    Pending --> Error: CRC validation import or network failure
+    Pending --> Idle: session timeout or disconnect
+    Error --> Idle: clear session and resume advertising
+    Settled --> Idle: next dock session
+
+    note right of Pending
+        Human confirmation occurs on Dock A before broadcast.
+        Ambiguous sends are audited and never retried automatically.
+    end note

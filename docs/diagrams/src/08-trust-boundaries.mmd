@@ -1,0 +1,44 @@
+flowchart LR
+    classDef trusted fill:#dcfce7,stroke:#16803a,color:#12351f,stroke-width:2px
+    classDef device fill:#dbeafe,stroke:#2563eb,color:#172554,stroke-width:2px
+    classDef planned fill:#fef3c7,stroke:#d97706,color:#4a2b05,stroke-width:2px,stroke-dasharray:6 4
+    classDef external fill:#f1f5f9,stroke:#64748b,color:#1e293b,stroke-width:2px
+    classDef denied fill:#fee2e2,stroke:#dc2626,color:#450a0a,stroke-width:2px
+
+    human["Human confirmation boundary"]:::trusted
+
+    subgraph custodyA["Custody boundary A"]
+        mnemonicA["Mnemonic A mode 0600"]:::trusted
+        datadirA["rgb-lib datadir A and one-process lock"]:::trusted
+        walletA["Wallet A policy adapter"]:::trusted
+        mnemonicA --> walletA
+        datadirA --> walletA
+    end
+
+    subgraph radioBoundary["Non-custodial bill boundary"]
+        billA["Bill A ESP32 | display radio chunks only"]:::device
+        billB["Bill B ESP32 | display radio chunks only"]:::device
+        billA <-.->|"short-lived gated tap"| billB
+    end
+
+    subgraph custodyB["Custody boundary B"]
+        mnemonicB["Mnemonic B mode 0600"]:::trusted
+        datadirB["rgb-lib datadir B and one-process lock"]:::trusted
+        walletB["Wallet B OOB import adapter"]:::trusted
+        mnemonicB --> walletB
+        datadirB --> walletB
+    end
+
+    chain["Mutinynet indexer and Bitcoin network"]:::external
+    proxy["KaleidoSwap proxy | bootstrap faucet only"]:::external
+    wifiDenied["No dock-to-dock Wi-Fi consignment transport"]:::denied
+    phoneDenied["No phone app or QR required for tap"]:::denied
+
+    human -->|"one-use exact plan approval"| walletA
+    walletA -->|"signed witness transaction"| chain
+    walletB -->|"refresh and validate"| chain
+    walletA -.->|"implemented opaque GATT-dock chunks"| billA
+    billB -.->|"implemented opaque GATT-dock chunks"| walletB
+    walletA -->|"bootstrap receive exception"| proxy
+    walletA -.-> wifiDenied
+    billA -.-> phoneDenied

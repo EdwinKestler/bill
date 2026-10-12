@@ -1,0 +1,45 @@
+sequenceDiagram
+    autonumber
+    actor human as Human
+    participant dockB as Dock B and wallet B
+    participant billB as Bill B
+    participant billA as Bill A
+    participant dockA as Dock A and wallet A
+    participant chain as Mutinynet
+
+    rect rgb(239, 246, 255)
+        dockB->>dockB: Create generic witness invoice
+        dockB->>dockB: Require SIGNET_CUSTOM and empty endpoints
+        dockB-->>billB: Invoice bytes over implemented GATT-dock chunks
+        billB-->>billA: Invoice chunks over gated GATT-tap implemented locally
+        billA-->>dockA: Invoice bytes over implemented GATT-dock chunks
+    end
+
+    rect rgb(254, 249, 195)
+        dockA->>dockA: Read exact spendable RGB balance
+        dockA-->>human: Show immutable amount recipient fee and expiry
+        human->>dockA: Exact one-use CONFIRM plan id
+        dockA->>dockA: Recheck unchanged balance
+        dockA->>chain: donation send with witness output
+        chain-->>dockA: Broadcast txid and confirmation
+        dockA->>dockA: Hash exact rgb-lib consignment bytes
+    end
+
+    rect rgb(239, 246, 255)
+        dockA-->>billA: Consignment binary frames over GATT-dock
+        billA-->>billB: Consignment binary frames over gated GATT-tap
+        billB-->>dockB: Consignment binary frames over GATT-dock
+    end
+
+    rect rgb(220, 252, 231)
+        dockB->>dockB: Verify content hash and persist isolated inbox copy
+        dockB->>dockB: provide_out_of_band_consignment
+        dockB->>chain: Refresh and validate witness anchor
+        chain-->>dockB: One confirmation
+        dockB-->>billB: Show received denomination and SETTLED planned
+        dockA-->>billA: Show remaining denomination and SETTLED planned
+    end
+
+    Note over dockA,dockB: No proxy endpoint and no dock-to-dock Wi-Fi consignment path
+    Note over dockA,dockB: Donation mode has no receiver ACK gate
+    Note over dockA,dockB: Live accepted on Mutinynet with 20 USDT on 2026-10-11

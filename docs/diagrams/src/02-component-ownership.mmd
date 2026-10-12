@@ -1,0 +1,50 @@
+flowchart TB
+    classDef verified fill:#dcfce7,stroke:#16803a,color:#12351f,stroke-width:2px
+    classDef implemented fill:#dbeafe,stroke:#2563eb,color:#172554,stroke-width:2px
+    classDef planned fill:#fef3c7,stroke:#d97706,color:#4a2b05,stroke-width:2px,stroke-dasharray:6 4
+    classDef contract fill:#f1f5f9,stroke:#64748b,color:#1e293b,stroke-width:2px
+
+    subgraph firmware["ESP32 bill firmware"]
+        main["src/main.cpp composition only"]:::implemented
+        display["lib/BillDisplay OLED driver"]:::implemented
+        tftDisplay["lib/TftBillDisplay external ILI9341 driver"]:::implemented
+        dockGatt["lib/DockGatt frozen dock service"]:::implemented
+        tapProtocol["lib/TapProtocol metadata and button RSSI gate"]:::implemented
+        tapGatt["lib/TapGatt dual role session and tap radio"]:::implemented
+        config["include/config.h pins and UUIDs"]:::contract
+        main --> display
+        main --> tftDisplay
+        main --> dockGatt
+        main --> tapGatt
+        tapProtocol --> tapGatt
+        config --> main
+        config --> dockGatt
+        config --> tapGatt
+    end
+
+    subgraph dockApp["Laptop dock application"]
+        webServer["web/server.py local desk on 8788"]:::implemented
+        bleGateway["web/ble_gateway.py sync boundary"]:::implemented
+        bleak["dock/bill_dock.py Bleak central"]:::implemented
+        rgbPolicy["web/rgb adapter and confirmation policy"]:::verified
+        walletCli["scripts/rgb_wallet.py operator acceptance CLI"]:::verified
+        qvac["QVAC intent and tool integration"]:::planned
+        webServer --> bleGateway --> bleak
+        walletCli --> rgbPolicy
+        webServer -.->|"not enabled yet"| rgbPolicy
+        qvac -.-> webServer
+    end
+
+    subgraph contracts["Authoritative contracts"]
+        design["docs/DESIGN.md product and trust model"]:::contract
+        protocol["docs/PROTOCOL.md GATT and chunk format"]:::contract
+        json["docs/devs/gatt-contract.json machine-readable UUIDs"]:::contract
+        protocol <--> json
+    end
+
+    protocol --> dockGatt
+    protocol --> tapGatt
+    json --> config
+    json --> bleak
+    design --> main
+    design --> rgbPolicy

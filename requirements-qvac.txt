@@ -1,0 +1,10 @@
+# Fat linux-x64 QVAC client + bundled Bare worker. Pin matches @qvac/sdk 0.21.0.
+# A plain `pip install tetherto-qvac-sdk` (no -f) gets the thin PyPI wheel.
+#
+#   ./install_qvac.sh
+#   # or:
+#   .venv/bin/python -m pip install -r requirements-qvac.txt \
+#     -f https://github.com/tetherto/qvac/releases/expanded_assets/sdk-v0.21.0
+#
+# Does not download GGUFs. Models go in .qvac/ (gitignored).
+tetherto-qvac-sdk==0.21.0

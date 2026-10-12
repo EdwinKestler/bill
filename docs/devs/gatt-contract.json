@@ -1,0 +1,145 @@
+{
+  "schema_version": 1,
+  "contract_revision": "2026-10-11",
+  "status": "dock-core-v1-frozen+chunk-v1+tap-v1-physical-accepted",
+  "device_name": "RgbBill",
+  "services": {
+    "dock": {
+      "uuid": "7c3e9a10-4b1e-4c8f-9d2a-00b111d0c001",
+      "role": "bill-peripheral, dock-central",
+      "characteristics": {
+        "identity": {
+          "uuid": "7c3e9a10-4b1e-4c8f-9d2a-00b111d0c002",
+          "operations": ["read"],
+          "encoding": "ascii"
+        },
+        "status": {
+          "uuid": "7c3e9a10-4b1e-4c8f-9d2a-00b111d0c003",
+          "operations": ["read", "notify"],
+          "encoding": "ascii",
+          "values": ["idle", "tap", "pending", "settled", "error"]
+        },
+        "denomination": {
+          "uuid": "7c3e9a10-4b1e-4c8f-9d2a-00b111d0c004",
+          "operations": ["read", "notify"],
+          "encoding": "ascii",
+          "unit": "cents"
+        },
+        "cmd": {
+          "uuid": "7c3e9a10-4b1e-4c8f-9d2a-00b111d0c005",
+          "operations": ["write-with-response"],
+          "encoding": "utf-8-command-v1",
+          "commands": [
+            "diag:display:500:pending",
+            "diag:chunk:echo",
+            "chunk:discard"
+          ]
+        },
+        "chunk_in": {
+          "uuid": "7c3e9a10-4b1e-4c8f-9d2a-00b111d0c006",
+          "operations": ["write-with-response"],
+          "encoding": "binary-frame-v1",
+          "max_payload_bytes": 200,
+          "default_payload_bytes": 180,
+          "max_transfer_bytes": 655360,
+          "implemented": true
+        },
+        "chunk_out": {
+          "uuid": "7c3e9a10-4b1e-4c8f-9d2a-00b111d0c007",
+          "operations": ["notify"],
+          "encoding": "binary-frame-v1",
+          "max_payload_bytes": 200,
+          "default_payload_bytes": 180,
+          "max_transfer_bytes": 655360,
+          "implemented": true
+        }
+      }
+    },
+    "tap": {
+      "uuid": "7c3e9a10-4b1e-4c8f-9d2a-00b1117a0002",
+      "role": "staged-bill-peripheral-sender, empty-bill-central-receiver",
+      "gate": {
+        "mode": "debounced-rising-edge-one-shot",
+        "arm_window_ms": 15000,
+        "second_press": "cancel",
+        "release_after_press": "no-effect",
+        "input": {
+          "wemos": "GPIO12 active-high momentary TTP223 digital touch",
+          "ttgo_tft": "GPIO12 active-high momentary TTP223 digital touch"
+        },
+        "rssi_min_dbm": -60,
+        "discovery_name_prefix": "RgbBill",
+        "service_validated_after_connect": true
+      },
+      "characteristics": {
+        "meta": {
+          "uuid": "7c3e9a10-4b1e-4c8f-9d2a-00b1117a0003",
+          "operations": ["read"],
+          "encoding": "tap-metadata-v1-little-endian",
+          "bytes": 12
+        },
+        "control": {
+          "uuid": "7c3e9a10-4b1e-4c8f-9d2a-00b1117a0004",
+          "operations": ["write-with-response"],
+          "encoding": "uint8",
+          "values": {"start": 1, "cancel": 2}
+        },
+        "chunk_in": {
+          "uuid": "7c3e9a10-4b1e-4c8f-9d2a-00b1117a0005",
+          "operations": ["write-with-response"],
+          "encoding": "binary-frame-v1-ack"
+        },
+        "chunk_out": {
+          "uuid": "7c3e9a10-4b1e-4c8f-9d2a-00b1117a0006",
+          "operations": ["notify"],
+          "encoding": "binary-frame-v1-data"
+        }
+      },
+      "max_transfer_bytes": 655360,
+      "implemented": true,
+      "physical_acceptance": true,
+      "physical_acceptance_evidence": {
+        "date": "2026-10-11",
+        "fixture_bytes": 520,
+        "sha256": "925a4bf7cdf591eea7e5b78975964aee5801417761474fe3588b385ba00bc014",
+        "wemos_to_ttgo": {
+          "kind": "invoice",
+          "session_id": "f7e494c0"
+        },
+        "ttgo_to_wemos": {
+          "kind": "consignment",
+          "session_id": "d959a1ae",
+          "qualifying_rssi_dbm": -49
+        },
+        "advertising_recovered_without_reset": true
+      }
+    }
+  },
+  "chunk_v1": {
+    "endianness": "little",
+    "header_bytes": 12,
+    "crc_bytes": 4,
+    "crc": "crc32-ieee",
+    "kinds": {
+      "invoice": 1,
+      "consignment": 2,
+      "ack": 3
+    },
+    "ack_payload_bytes": 1,
+    "ack_status": {
+      "accepted": 0,
+      "malformed": 1,
+      "unsupported": 2,
+      "crc_mismatch": 3,
+      "session_mismatch": 4,
+      "sequence_mismatch": 5,
+      "total_mismatch": 6,
+      "too_large": 7,
+      "storage_failure": 8,
+      "busy": 9
+    },
+    "delivery": "stop-and-wait",
+    "disconnect": "delete-incomplete-keep-complete",
+    "session_timeout_ms": 300000
+  }
+}

@@ -1,0 +1,31 @@
+flowchart TB
+    classDef header fill:#dbeafe,stroke:#2563eb,color:#172554,stroke-width:2px
+    classDef payload fill:#dcfce7,stroke:#16803a,color:#12351f,stroke-width:2px
+    classDef checksum fill:#fef3c7,stroke:#d97706,color:#4a2b05,stroke-width:2px
+    classDef rule fill:#f1f5f9,stroke:#64748b,color:#1e293b,stroke-width:2px
+
+    build["Sender splits exact invoice or consignment bytes"]:::rule
+
+    subgraph frame["Binary frame v1 | little-endian | maximum 216 bytes"]
+        direction LR
+        version["version | 1 byte | 0x01"]:::header
+        kind["kind | 1 byte | invoice 01 consignment 02 ACK 03"]:::header
+        session["session_id | 4 bytes | random per transfer"]:::header
+        sequence["sequence | 2 bytes | zero-based index"]:::header
+        total["total | 2 bytes | total frame count"]:::header
+        length["payload_length | 2 bytes | 0 to 200"]:::header
+        data["payload | 0 to 200 bytes | raw binary"]:::payload
+        crc["crc32 | 4 bytes | all preceding bytes"]:::checksum
+        version --> kind --> session --> sequence --> total --> length --> data --> crc
+    end
+
+    validate["Receiver checks version session sequence total length and CRC"]:::rule
+    ack["Stop and wait | matching one-byte status ACK per frame"]:::header
+    reassemble["Stage one complete opaque artifact | maximum 640 KiB"]:::rule
+    discard["Disconnect or timeout deletes incomplete data | complete stage survives"]:::rule
+
+    build --> frame
+    frame --> validate
+    validate -->|"valid frame"| ack
+    ack -->|"accepted and complete"| reassemble
+    validate -->|"invalid or interrupted"| discard

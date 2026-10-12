@@ -1,0 +1,38 @@
+flowchart LR
+    classDef implemented fill:#dbeafe,stroke:#2563eb,color:#172554,stroke-width:2px
+    classDef planned fill:#fef3c7,stroke:#d97706,color:#4a2b05,stroke-width:2px,stroke-dasharray:6 4
+    classDef peer fill:#f1f5f9,stroke:#64748b,color:#1e293b,stroke-width:2px
+
+    dock["Laptop dock as BLE central"]:::peer
+    bill["RgbBill as BLE peripheral"]:::implemented
+
+    subgraph dockService["Dock service c001 frozen v1"]
+        identity["IDENTITY c002 | Read | ASCII bill id"]:::implemented
+        status["STATUS c003 | Read Notify | idle tap pending settled error"]:::implemented
+        denomination["DENOMINATION c004 | Read Notify | integer cents"]:::implemented
+        cmd["CMD c005 | Write with response | UTF-8 command v1"]:::implemented
+        chunkIn["CHUNK_IN c006 | Write with response | data or ACK"]:::implemented
+        chunkOut["CHUNK_OUT c007 | Notify | ACK or data"]:::implemented
+    end
+
+    sender["Staged bill as BLE peripheral sender"]:::peer
+    receiver["Empty bill as gated central receiver"]:::peer
+
+    subgraph tapService["Tap service 7a0002 implemented v1"]
+        meta["META 0003 | Read | 12 byte session metadata"]:::implemented
+        control["CONTROL 0004 | Write | START or CANCEL"]:::implemented
+        tapIn["CHUNK_IN 0005 | Write | ACK"]:::implemented
+        tapOut["CHUNK_OUT 0006 | Notify | opaque data"]:::implemented
+    end
+
+    dock --> bill
+    bill --> identity
+    bill --> status
+    bill --> denomination
+    dock --> cmd
+    dock --> chunkIn
+    chunkOut --> dock
+    sender --> meta
+    receiver --> control
+    receiver --> tapIn
+    tapOut --> receiver

@@ -1,0 +1,3 @@
+# Installed separately from the basic Bleak/QVAC environment because this is a
+# large native wheel and only the live Mutinynet dock needs it.
+rgb-lib==0.3.0b7

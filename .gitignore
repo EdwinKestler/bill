@@ -1,0 +1,55 @@
+# Python
+.venv/
+.venv-platformio/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# Secrets and local env
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+mnemonics.txt
+secrets/
+
+# RGB / Bitcoin wallet state (one bill, one datadir)
+wallet-data/
+.rgb-oob/
+*.sqlite
+*.sqlite-journal
+.rgb/
+.bdk/
+
+# PlatformIO / firmware artifacts
+.pio/
+*.bin
+*.elf
+*.map
+compile_commands.json
+
+# VS Code (keep extensions.json)
+.vscode/.browse.c_cpp.db*
+.vscode/c_cpp_properties.json
+.vscode/launch.json
+.vscode/ipch
+.idea/
+
+# Palimnex runtime never lives here; parent rgbhackathon owns the silo
+.palimnex/
+*.pmem
+
+# QVAC worker cache and GGUFs (install_qvac.sh / QVAC_CACHE_DIR)
+.qvac/
+.tools/
+*.gguf
+*.ggml
+
+# OS
+.DS_Store
+*.swp
+*.log

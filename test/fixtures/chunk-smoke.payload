@@ -1,0 +1,6 @@
+RGB-BILL-CHUNK-V1-SYNTHETIC-PAYLOAD
+This fixture contains no wallet secret, invoice, consignment, transaction, or spend authorization.
+It exists only to force a multi-frame BLE loopback and verify byte-exact reassembly across CHUNK_IN and CHUNK_OUT.
+Frame boundaries must not alter these bytes. CRC32 protects each frame. The final SHA-256 comparison protects the complete echoed artifact.
+0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210

@@ -1,0 +1,56 @@
+# Folder structure
+
+```
+ideas/bill/                 this project (git + PlatformIO root)
+  README.md                 humans
+  AGENTS.md                 agents: rules, Palimnex parent silo, build order
+  platformio.ini            VS Code / PIO firmware
+  install_python.sh         .venv (Bleak dock)
+  install_qvac.sh           fat linux-x64 tetherto-qvac-sdk into .venv
+  install_platformio.sh     .venv-platformio (pio)
+  requirements.txt          dock runtime (Bleak)
+  requirements-rgb.txt      pinned optional rgb-lib 0.3.0b7 native wheel
+  requirements-qvac.txt     tetherto-qvac-sdk==0.21.0 (needs GitHub -f)
+  requirements-dev.txt      pytest / ruff
+  requirements-platformio.txt
+  .env.example              Mutinynet paths, BLE name, bill role, QVAC_CACHE_DIR
+  scripts/qvac_smoke.py     worker heartbeat + GPU flags; no GGUF
+  scripts/qvac_fetch_instruct.py  QWEN3_600M_INST_Q4 into .qvac + one completion
+  scripts/rgb_tap.py        real invoice/consignment wallet-to-BLE operator flow
+  .vscode/extensions.json   PlatformIO IDE + Python
+  include/config.h          pins + frozen dock UUIDs
+  src/main.cpp              firmware entry (composition only)
+  src/oled_test.cpp         standalone OLED diagnostic entry
+  src/ttgo_lora32_test.cpp  TTGO V1.3 display + BLE diagnostic entry
+  src/ttgo_oled_reference.cpp  LilyGO ThingPulse OLED-only comparison
+  lib/BillDisplay/          shared SSD1306 driver for main + OLED test
+  lib/TftBillDisplay/       isolated TTGO external ILI9341 SPI driver
+  lib/ChunkProtocol/        portable frame codec + receive-session FSM
+  lib/DockGatt/             BLE peripheral + SPIFFS staging + ACK sender
+  lib/                      BillDisplay and implemented dock transport; TapGatt next
+  test/                     native PlatformIO FSM tests
+  pytests/                  Python tests for the web dock
+  dock/                     Bleak central + dock core + chunk sender/receiver
+  web/                      Python web dock (HTTP + live isolated RGB tap flow)
+    server.py               role-specific loopback HTTP + safety state machine
+    rgb_web.py              long-lived role wallet + retained-artifact recovery
+    static/                 denomination, chat, exact typed confirmation gate
+    rgb/                    isolated rgb-lib-python adapter + config check
+    rust/                   optional native sidecar (not weekend path)
+  docs/
+    DESIGN.md               product + radio + RGB mapping
+    PROTOCOL.md             frozen dock core + physically accepted chunk/tap v1
+    FOLDER.md               this file
+    LOOKUP.md               Palimnex: parent rgbhackathon, no new silo
+    agents-prompt.md        paste for other coding agents
+    agents-prompt-openai-56.md  OpenAI 5.6: test env + Palimnex bring-up
+    TTGO-LORA32-V1.3-TEST.md    second bill hardware test protocol
+    RGB-TAP-LIVE.md         controlled real-wallet tap acceptance and recovery
+    WEB-RGB-TEST.md         browser-driven two-dock acceptance and API contract
+  .agents/skills/
+    source-cache/           Palimnex from rgbhackathon root
+    bill-firmware/          PlatformIO / ESP32
+    bill-dock/              Bleak dock client
+```
+
+Lookup layer is the parent hackathon Palimnex (`/media/kestl/andor/github/rgbhackathon`). This folder is extra corpus, not a second project_id.

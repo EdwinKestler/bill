@@ -1,0 +1,63 @@
+:root {
+  color-scheme: light;
+  --ink: #12110f;
+  --paper: #f4efe4;
+  --note: #1f6b3a;
+  --line: #d7d0c3;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font: 16px/1.4 "Iowan Old Style", "Palatino Linotype", Palatino, serif;
+  color: var(--ink);
+  background: var(--paper);
+}
+main {
+  max-width: 40rem;
+  margin: 0 auto;
+  padding: 1.5rem;
+}
+.kicker { margin: 0; letter-spacing: 0.12em; text-transform: uppercase; font-size: 0.75rem; }
+h1 { margin: 0.2rem 0 0.5rem; font-size: 1.8rem; }
+.note {
+  border: 2px solid var(--note);
+  border-radius: 0.75rem;
+  padding: 1.25rem;
+  margin: 1.25rem 0;
+  background: #fff;
+}
+.note .label { margin: 0; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.08em; }
+#denomination { margin: 0.25rem 0; font-size: 3rem; font-weight: 700; color: var(--note); }
+#status { margin: 0; }
+.chat form { display: flex; gap: 0.5rem; align-items: end; }
+label { display: block; font-size: 0.8rem; }
+input {
+  flex: 1;
+  font: inherit;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--line);
+  background: #fff;
+}
+pre {
+  max-width: 36rem;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  padding: 0.75rem;
+  border: 1px solid var(--line);
+  background: #faf8f3;
+  font: 0.78rem/1.45 ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+button {
+  font: inherit;
+  padding: 0.5rem 0.9rem;
+  border: 1px solid var(--ink);
+  background: var(--ink);
+  color: #fff;
+  cursor: pointer;
+}
+#log { list-style: none; padding: 0; min-height: 4rem; }
+#log li { margin: 0.4rem 0; }
+#log .you { color: #555; }
+dialog { border: 1px solid var(--ink); padding: 1rem 1.25rem; max-width: 40rem; }
+menu { display: flex; gap: 0.5rem; justify-content: end; padding: 0; }
+menu button[value="cancel"] { background: #fff; color: var(--ink); }

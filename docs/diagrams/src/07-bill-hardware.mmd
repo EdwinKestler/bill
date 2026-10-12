@@ -1,0 +1,36 @@
+flowchart TB
+    classDef board fill:#dbeafe,stroke:#2563eb,color:#172554,stroke-width:2px
+    classDef peripheral fill:#dcfce7,stroke:#16803a,color:#12351f,stroke-width:2px
+    classDef planned fill:#fef3c7,stroke:#d97706,color:#4a2b05,stroke-width:2px,stroke-dasharray:6 4
+    classDef storage fill:#f1f5f9,stroke:#64748b,color:#1e293b,stroke-width:2px
+
+    subgraph wemos["Bill A WEMOS LOLIN32"]
+        boardA["ESP32-D0WDQ6 | 4 MB flash"]:::board
+        oled["SSD1306 OLED | 128 by 64 | SDA21 SCL22"]:::peripheral
+        led["Status LED | GPIO5"]:::peripheral
+        button["TTP223 digital touch | GPIO12 active high | release at reset"]:::planned
+        usbA["CP2104 USB UART | stable by-id path"]:::peripheral
+        boardA --> oled
+        boardA --> led
+        boardA --> button
+        usbA --> boardA
+    end
+
+    subgraph ttgo["Bill B TTGO LoRa32 V1.3"]
+        boardB["ESP32 | 4 MB flash | LoRa disabled"]:::board
+        tft["ILI9341 TFT | SCK18 MOSI23 DC2 RST4 CS15"]:::planned
+        touch["TTP223 digital touch | GPIO12 active high | release at reset"]:::planned
+        backlight["Backlight LED | 3V3 or transistor | not GPIO sourced"]:::storage
+        usbB["CP2102 USB UART | stable by-id path"]:::peripheral
+        boardB --> tft
+        boardB --> touch
+        backlight --> tft
+        usbB --> boardB
+    end
+
+    radio["ESP32 BLE | dock peripheral and tap peer"]:::peripheral
+    flash["Factory app 3 MiB | SPIFFS 896 KiB | no OTA"]:::storage
+    boardA --> radio
+    boardB --> radio
+    boardA --> flash
+    boardB --> flash

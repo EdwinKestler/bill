@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>RGB cash bill — dock</title>
+  <link rel="stylesheet" href="/app.css" />
+</head>
+<body>
+  <main>
+    <header>
+      <p class="kicker">Dock · live RGB tap · Mutinynet</p>
+      <h1>Cash bill</h1>
+      <p id="meta">loading…</p>
+    </header>
+    <section class="note" aria-live="polite">
+      <p class="label">This bill</p>
+      <p id="denomination">$0.00</p>
+      <p id="status">idle</p>
+    </section>
+    <section class="chat">
+      <ol id="log"></ol>
+      <form id="form">
+        <label for="text">Assistant</label>
+        <input id="text" name="text" autocomplete="off" placeholder="bill for $5" />
+        <button type="submit">Send</button>
+      </form>
+    </section>
+  </main>
+  <dialog id="confirm">
+    <form method="dialog" id="confirm-form">
+      <h2>Confirm Mutinynet broadcast</h2>
+      <p id="confirm-note"></p>
+      <pre id="confirm-plan"></pre>
+      <label for="confirmation-phrase">Type the exact confirmation phrase</label>
+      <input
+        id="confirmation-phrase"
+        name="confirmation-phrase"
+        autocomplete="off"
+        spellcheck="false"
+      />
+      <menu>
+        <button value="cancel" type="submit">Cancel</button>
+        <button id="approve" value="default" type="submit">Broadcast once</button>
+      </menu>
+    </form>
+  </dialog>
+  <script src="/app.js"></script>
+</body>
+</html>
