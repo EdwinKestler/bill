@@ -3,6 +3,9 @@
 ```
 ideas/bill/                 this project (git + PlatformIO root)
   README.md                 humans
+  site/                     public GitHub Pages project presentation
+  scripts/build_site.py     explicit public asset packaging into .site-build/
+  .github/workflows/pages.yml  static website deployment
   AGENTS.md                 agents: rules, Palimnex parent silo, build order
   platformio.ini            VS Code / PIO firmware
   install_python.sh         .venv (Bleak dock)

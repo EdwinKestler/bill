@@ -10,6 +10,11 @@ second silo. See [docs/LOOKUP.md](docs/LOOKUP.md).
 
 ## Humans
 
+The project website is ready for GitHub Pages at the intended address
+<https://edwinkestler.github.io/bill/>. Deployment is awaiting an eligible
+Pages configuration. Source, local preview, and deployment instructions are
+in [site/README.md](site/README.md).
+
 1. Open **this folder** in VS Code (`File → Open Folder` on `ideas/bill`).
 2. Install the **PlatformIO IDE** extension (prompted via `.vscode/extensions.json`).
 3. From a terminal in this folder:
