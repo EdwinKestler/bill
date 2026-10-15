@@ -25,23 +25,15 @@ photographs of the hardware or live wallet balances.
 ## Deployment
 
 In GitHub repository Settings → Pages, choose **GitHub Actions** as the source.
-Then set the Actions repository variable `PAGES_ENABLED` to `true`.
 The workflow at `.github/workflows/pages.yml` packages `.site-build/` and deploys
 on relevant pushes to `main`, or through a manual workflow run. Expected URL:
 <https://edwinkestler.github.io/bill/>.
 
-The build job always runs; deployment stays skipped until that variable is set.
-After enabling Pages and the variable, run the workflow from the Actions tab.
-
-On 2026-10-12, GitHub returned HTTP 422 when activation was attempted:
-“Your current plan does not support GitHub Pages for this repository.”
-The repository is private. The site is prepared and locally verified; it is
-not yet published at the expected URL.
-
-The repository can stay private when the owner's GitHub plan supports Pages for
-private repositories. The published website is normally public; this does not
-change repository visibility. If Pages is unavailable for the current plan,
-enable an eligible plan or explicitly choose to make the repository public.
+The repository and Pages configuration are public. Deployment uses only the
+explicit `.site-build/` allowlist produced by `scripts/build_site.py`; it never
+uploads the repository root, local environments, wallet data, or model caches.
+The deploy job runs after every successful site build without a separate
+repository-variable gate.
 
 Workflow reference:
 [GitHub Pages custom workflows](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages).
@@ -50,8 +42,9 @@ Workflow reference:
 
 - `docs/DESIGN.md` and `docs/PROTOCOL.md`: architecture, hardware, radio behavior.
 - `docs/RGB-TAP-LIVE.md`: accepted 20 USDT test transfer on 2026-10-11.
-- `docs/WEB-RGB-TEST.md`: browser integration and remaining physical acceptance.
+- `docs/WEB-RGB-TEST.md`: accepted browser-driven physical transfer.
 
-Keep the status copy aligned with those records. QVAC voice integration is
-planned; the CLI transfer is accepted; the browser flow is implemented but its
-first full physical transfer remains a separate gate.
+Keep the status copy aligned with those records. The browser-driven physical
+transfer is accepted. Local QVAC inference is verified; connecting it to the
+deterministic, confirmation-gated action flow remains the next integration
+gate.

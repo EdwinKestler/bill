@@ -14,7 +14,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: github-pages
+  group: pages
   cancel-in-progress: false
 
 jobs:
@@ -32,7 +32,6 @@ jobs:
           path: .site-build
 
   deploy:
-    if: vars.PAGES_ENABLED == 'true'
     needs: build
     runs-on: ubuntu-latest
     permissions:
@@ -45,4 +44,4 @@ jobs:
       - uses: actions/configure-pages@v5
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
