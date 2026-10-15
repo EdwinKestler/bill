@@ -76,14 +76,16 @@ void BillDisplay::showAmount(uint32_t cents, const char* status) {
   display_.setCursor(40, 5);
   display_.print("RGB BILL");
 
-  display_.setTextSize(2);
-  int16_t x1 = 0;
-  int16_t y1 = 0;
-  uint16_t width = 0;
-  uint16_t height = 0;
-  display_.getTextBounds(amount, 0, 0, &x1, &y1, &width, &height);
-  display_.setCursor((OLED_WIDTH - width) / 2, 24);
-  display_.print(amount);
+  if (cents > 0) {
+    display_.setTextSize(2);
+    int16_t x1 = 0;
+    int16_t y1 = 0;
+    uint16_t width = 0;
+    uint16_t height = 0;
+    display_.getTextBounds(amount, 0, 0, &x1, &y1, &width, &height);
+    display_.setCursor((OLED_WIDTH - width) / 2, 24);
+    display_.print(amount);
+  }
 
   display_.setTextSize(1);
   display_.setCursor(5, 52);

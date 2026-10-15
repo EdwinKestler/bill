@@ -51,7 +51,7 @@ class FakeGateway:
         self.staged = []
         self.next_session = 0x12345678
 
-    def stage(self, kind, path):
+    def stage(self, kind, path, denomination_cents=0):
         self.staged.append((kind, path.read_bytes()))
         return self.next_session
 

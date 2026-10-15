@@ -1,17 +1,69 @@
-# GATT contract
+# Human-first transfer protocol and GATT contract
 
 Rendered views of this contract are available as the
 [GATT service map](diagrams/05-gatt-contract.png) and
 [binary chunk-frame layout](diagrams/06-chunk-frame.png). Editable Mermaid
 sources are indexed in [docs/diagrams/README.md](diagrams/README.md).
 
-Dock core status: **frozen v1** after the 2026-10-09 hardware session that
-advertised `RgbBill`, read `IDENTITY`, and reconnected without a reset. Tap
-GATT and dock chunk transport status: **implemented and physically accepted
-v1** in both directions as of 2026-10-11. `include/config.h` and
+The first tap/chunk protocol was physically accepted on 2026-10-11. The
+human-first inventory revision below is implemented and build-verified on both
+board profiles, but is **not physically accepted until both boards are flashed
+and the acceptance procedure is repeated**. `include/config.h` and
 `docs/devs/gatt-contract.json` stay in lockstep with this document.
 
 Device name: `RgbBill`.
+
+## The procedure people follow
+
+There are only two primary dock actions. Dock A uses **Send USDT**. Dock B
+uses **Receive USDT**. Every action connects and reads the bill inventory
+before deciding whether to write or read; a missing artifact is an immediate
+instruction, never a normal CHUNK_OUT timeout.
+
+1. On Dock B, press **Receive USDT**. If Bill B is empty, the dock creates one
+   $5 transport-free invoice and writes it to Bill B.
+2. Bill B displays `$5.00 / INVOICE TAP`. Press Bill A once while the bills
+   are close. Bill A receives the invoice; no button is held.
+3. Bill A displays `$5.00 / INVOICE DOCK`. On Dock A, press **Send USDT**.
+   The dock reads the invoice, validates it, and displays the immutable plan.
+4. Type the exact `CONFIRM <plan-id>` phrase. Only this step may broadcast.
+   After broadcast, the exact generated consignment is written to Bill A. A
+   staging failure retains that same consignment and must never repeat send.
+5. Bill A displays `$5.00 / PROOF TAP`. Press Bill B once nearby. Bill B
+   receives the consignment.
+6. Bill B displays `$5.00 / PROOF DOCK`. On Dock B, press **Receive USDT**.
+   The dock reads and imports the consignment, then refreshes after Mutinynet
+   confirmation.
+
+No action silently discards or overwrites an artifact. If the stored artifact
+does not match the selected action, the dock explains the next physical step.
+Each complete artifact has a small SPIFFS metadata sidecar. Firmware restores
+the kind, session, size, denomination, and direction after reset; a missing or
+invalid sidecar is never treated as permission to overwrite an existing file.
+When upgrading from the sidecar-less protocol, finish the staged transfer
+before flashing or explicitly run `chunk-discard`. If new firmware finds a
+legacy/orphaned artifact, it blocks all new transfers until that explicit
+discard; it never guesses the artifact kind or overwrites it.
+
+## Bill inventory state
+
+The amount on an onboard screen is an **artifact denomination**, not a wallet
+balance. The screen shows no numeric amount when inventory is empty. Wallet
+balances remain on the laptop dock.
+
+| Stored state | Screen | Permitted next step |
+| --- | --- | --- |
+| empty | `EMPTY` (no amount) | Dock B: **Receive USDT** writes invoice |
+| invoice, bill→peer | `$5.00 / INVOICE TAP` | Press the receiving bill once |
+| invoice, bill→dock | `$5.00 / INVOICE DOCK` | Dock A: **Send USDT** reads invoice |
+| consignment, bill→peer | `$5.00 / PROOF TAP` | Press the receiving bill once |
+| consignment, bill→dock | `$5.00 / PROOF DOCK` | Dock B: **Receive USDT** imports proof |
+
+On every Connect, Send, or Receive action, the dock reads `IDENTITY`, `STATUS`,
+`DENOMINATION`, and `ARTIFACT_META` in the same BLE session. The
+`DENOMINATION` value must equal the inventory denomination. The artifact kind
+and direction select CHUNK_IN versus CHUNK_OUT; human wording never selects a
+blind read.
 
 ## Dock service (`7c3e9a10-4b1e-4c8f-9d2a-00b111d0c001`)
 
@@ -25,19 +77,29 @@ Laptop is central. Bill is peripheral. One active transfer per connection.
 | CMD | `…c005` | Write-with-response | UTF-8 command v1 |
 | CHUNK_IN | `…c006` | Write-with-response | Binary frame v1, dock → bill |
 | CHUNK_OUT | `…c007` | Notify | Binary frame v1, bill → dock |
+| ARTIFACT_META | `…c008` | Read | 16-byte inventory v1 |
 
-Dock core v1 exposes one non-production command:
-`diag:display:500:pending`. It sets `DENOMINATION` to ASCII `500`, sets
-`STATUS` to ASCII `pending`, notifies subscribers, and asks the display to show
-`$5.00 / PENDING`. It does not provision a bill, touch a wallet, construct or
-broadcast a transaction, or survive a restart. Other command strings are
-rejected. Production commands require a later contract revision.
+`ARTIFACT_META` is little-endian: version (1 byte, `0x01`), direction (1 byte:
+empty `0`, bill-to-peer `1`, bill-to-dock `2`), kind (1 byte: empty `0`, invoice
+`1`, consignment `2`), reserved zero (1 byte), session id (uint32), byte size
+(uint32), and denomination cents (uint32).
+
+Dock core exposes one non-production display command:
+`diag:display:empty`. It shows `DISPLAY TEST` without a numeric amount and
+keeps `DENOMINATION=0`. It does not provision a bill, touch a wallet,
+construct or broadcast a transaction, or survive a restart. Other unknown
+command strings are rejected.
 
 Chunk transport adds two non-wallet commands. `diag:chunk:echo` arms a
 one-shot, byte-exact echo of the next complete `CHUNK_IN` transfer through
 `CHUNK_OUT`. `chunk:discard` deletes the staged transport artifact. Neither
 command parses an RGB invoice, imports a consignment, calls a wallet, or
 broadcasts a transaction.
+
+Before a normal dock→bill transfer, the dock writes
+`artifact:prepare:<kind>:<denomination_cents>`. Firmware applies this amount
+only if the completed chunk kind matches. The command alone never changes the
+screen; only a complete stored artifact does.
 
 `CHUNK_IN` accepts data frames from the dock and ACK frames for data sent by
 the bill. `CHUNK_OUT` notifies an ACK for every accepted/rejected inbound data
@@ -116,7 +178,7 @@ explicitly cancels an armed window or active receive session.
 
 | Name | UUID suffix | Properties | Payload |
 | --- | --- | --- | --- |
-| META | `…0003` | Read | 12-byte tap metadata v1 |
+| META | `…0003` | Read | 16-byte tap metadata v2 |
 | CONTROL | `…0004` | Write-with-response | `0x01` START, `0x02` CANCEL |
 | CHUNK_IN | `…0005` | Write-with-response | chunk-v1 ACK, receiver → sender |
 | CHUNK_OUT | `…0006` | Notify | chunk-v1 data, sender → receiver |
@@ -125,12 +187,13 @@ Tap metadata is little-endian:
 
 | Field | Size | Meaning |
 | --- | ---: | --- |
-| version | 1 | `0x01` |
+| version | 1 | `0x02` (`0x01` 12-byte metadata is decode-only legacy) |
 | state | 1 | `0x00` empty, `0x01` artifact ready |
 | kind | 1 | chunk-v1 invoice `0x01` or consignment `0x02`; zero if empty |
 | reserved | 1 | Must be zero |
 | session_id | 4 | Same session identifier carried by every chunk frame |
 | size | 4 | Exact artifact byte count, maximum 655360 |
+| denomination_cents | 4 | Amount to display only while this artifact exists |
 
 `CHUNK_OUT` and `CHUNK_IN` reuse the dock service's binary chunk-v1 envelope,
 CRC32, strict ordering, exact duplicate ACK behavior, and stop-and-wait retry
@@ -146,7 +209,7 @@ inside the disconnect callback. A bill-to-bill connection is not treated as a
 dock retrieval session: the received artifact is queued to dock `CHUNK_OUT`
 only after the laptop has enabled that characteristic's notification CCCD.
 
-The v1 discovery advertisement remains the frozen dock advertisement so it
+The discovery advertisement remains the frozen dock advertisement so it
 continues to fit one legacy 31-byte PDU. Tap discovery uses the `RgbBill*`
 name and validates the tap service after connection; no invoice, consignment,
 amount, or session metadata is placed in advertising data.

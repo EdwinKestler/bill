@@ -19,6 +19,46 @@ main {
 }
 .kicker { margin: 0; letter-spacing: 0.12em; text-transform: uppercase; font-size: 0.75rem; }
 h1 { margin: 0.2rem 0 0.5rem; font-size: 1.8rem; }
+.label { margin: 0; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.08em; }
+.device-panel {
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  padding: 1rem 1.25rem;
+  margin: 1.25rem 0;
+  background: #fffdf8;
+}
+.device-heading-row { display: flex; justify-content: space-between; gap: 1rem; align-items: start; }
+.device-heading-row h2 { margin: 0.15rem 0 0; font-size: 1.15rem; }
+.device-badge {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0.25rem 0.55rem;
+  font: 0.68rem/1.2 ui-monospace, SFMono-Regular, Consolas, monospace;
+  white-space: nowrap;
+}
+.device-badge.ready { color: #fff; background: var(--note); border-color: var(--note); }
+.device-badge.configured { color: #5b4612; background: #fff3c7; border-color: #d9bd68; }
+.device-summary { margin: 0.7rem 0; font-size: 0.85rem; overflow-wrap: anywhere; }
+.device-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+button.secondary { background: #fff; color: var(--ink); }
+button:disabled { opacity: 0.45; cursor: not-allowed; }
+#device-list { border: 0; padding: 0; margin: 1rem 0 0; }
+#device-list legend { font-size: 0.75rem; font-weight: 700; }
+.empty-device-list { margin: 0.5rem 0 0; color: #675f53; font-size: 0.8rem; }
+.device-option {
+  display: flex;
+  gap: 0.7rem;
+  align-items: center;
+  border-top: 1px solid var(--line);
+  padding: 0.7rem 0;
+  cursor: pointer;
+}
+.device-option input { flex: 0 0 auto; accent-color: var(--note); }
+.device-option strong, .device-option small { display: block; }
+.device-option strong { font-size: 0.88rem; }
+.device-option small { color: #675f53; font: 0.7rem/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; }
+.device-message { min-height: 1.3rem; margin: 0.7rem 0 0; font-size: 0.8rem; color: var(--note); }
+.device-help { margin: 0.45rem 0 0; color: #675f53; font-size: 0.7rem; }
 .note {
   border: 2px solid var(--note);
   border-radius: 0.75rem;
@@ -26,7 +66,29 @@ h1 { margin: 0.2rem 0 0.5rem; font-size: 1.8rem; }
   margin: 1.25rem 0;
   background: #fff;
 }
-.note .label { margin: 0; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.08em; }
+
+.workflow {
+  margin-top: 1.25rem;
+  padding: 1.25rem;
+  border: 1px solid #d8d0bd;
+  background: #fffdf7;
+}
+
+.workflow-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.workflow-actions button {
+  min-height: 3.25rem;
+  font-size: 1rem;
+}
+
+.workflow-actions button:disabled {
+  opacity: 0.42;
+}
 #denomination { margin: 0.25rem 0; font-size: 3rem; font-weight: 700; color: var(--note); }
 #status { margin: 0; }
 .chat form { display: flex; gap: 0.5rem; align-items: end; }
@@ -61,3 +123,10 @@ button {
 dialog { border: 1px solid var(--ink); padding: 1rem 1.25rem; max-width: 40rem; }
 menu { display: flex; gap: 0.5rem; justify-content: end; padding: 0; }
 menu button[value="cancel"] { background: #fff; color: var(--ink); }
+@media (max-width: 34rem) {
+  main { padding: 1rem; }
+  .device-heading-row { align-items: center; }
+  .device-actions button { flex: 1 1 auto; }
+  .chat form { flex-wrap: wrap; }
+  .chat form label { flex-basis: 100%; }
+}

@@ -7,12 +7,20 @@ import os
 import re
 import sys
 import threading
+from collections.abc import Callable
+from functools import wraps
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any
+from typing import Any, ParamSpec, TypeVar
 from urllib.parse import urlparse
 
 from web.rgb.config import BillRole
+from dock.chunk_protocol import FrameKind
+from web.device_registry import (
+    DeviceRegistry,
+    DeviceRegistryError,
+    RegisteredBillGateway,
+)
 from web.rgb_web import RgbWebError, RgbWebService
 
 STATIC = Path(__file__).resolve().parent / "static"
@@ -23,7 +31,12 @@ MODE = "live-rgb-tap"
 
 _state_lock = threading.RLock()
 _confirm_lock = threading.Lock()
+_workflow_lock = threading.RLock()
 _rgb_service: RgbWebService | None = None
+_device_registry: DeviceRegistry | None = None
+
+P = ParamSpec("P")
+R = TypeVar("R")
 
 _state: dict[str, Any] = {
     "role": ROLE,
@@ -41,7 +54,19 @@ _state: dict[str, Any] = {
 }
 
 
+def _serialized_workflow(function: Callable[P, R]) -> Callable[P, R]:
+    """Keep device registration and transfer state changes in one order."""
+
+    @wraps(function)
+    def wrapped(*args: P.args, **kwargs: P.kwargs) -> R:
+        with _workflow_lock:
+            return function(*args, **kwargs)
+
+    return wrapped
+
+
 def _bill() -> dict[str, Any]:
+    device = _device_registry.snapshot() if _device_registry is not None else None
     with _state_lock:
         pending = _state["pending"]
         recovery = _state["recovery"]
@@ -57,6 +82,7 @@ def _bill() -> dict[str, Any]:
             "settlement": _state["settlement"],
             "asset_id": _state["asset_id"],
             "asset_precision": _state["asset_precision"],
+            "device": device,
         }
 
 
@@ -92,6 +118,87 @@ def _error(exc: Exception, *, retryable: bool = True) -> dict[str, Any]:
     }
 
 
+def _registry(selected: DeviceRegistry | None = None) -> DeviceRegistry:
+    registry = selected or _device_registry
+    if registry is None:
+        raise DeviceRegistryError("physical bill registry is not initialized")
+    return registry
+
+
+def _device_error(exc: Exception) -> dict[str, Any]:
+    return {
+        "ok": False,
+        "error": f"{type(exc).__name__}: {exc}",
+        "retryable": (
+            exc.retryable if isinstance(exc, DeviceRegistryError) else True
+        ),
+        "broadcast": False,
+    }
+
+
+def handle_device_scan(
+    timeout: float, registry: DeviceRegistry | None = None
+) -> dict[str, Any]:
+    try:
+        selected = _registry(registry)
+        devices = selected.scan(timeout)
+    except Exception as exc:
+        return _device_error(exc)
+    return {
+        "ok": True,
+        "devices": devices,
+        "count": len(devices),
+        "device": selected.snapshot(),
+        "broadcast": False,
+    }
+
+
+def handle_device_connect(
+    address: str | None, registry: DeviceRegistry | None = None
+) -> dict[str, Any]:
+    try:
+        selected = _registry(registry)
+        connection = selected.connect(address or None)
+    except Exception as exc:
+        return _device_error(exc)
+    if connection["address"] == selected.active_address():
+        with _state_lock:
+            _state["identity"] = connection["identity"]
+    return {
+        "ok": True,
+        "connection": connection,
+        "device": selected.snapshot(),
+        "broadcast": False,
+    }
+
+
+@_serialized_workflow
+def handle_device_register(
+    address: str, registry: DeviceRegistry | None = None
+) -> dict[str, Any]:
+    def registration_allowed() -> bool:
+        with _state_lock:
+            return (
+                _state["pending"] is None
+                and _state["recovery"] is None
+                and _state["status"] in {"idle", "settled"}
+            )
+
+    try:
+        selected = _registry(registry)
+        snapshot = selected.register(address, guard=registration_allowed)
+    except Exception as exc:
+        return _device_error(exc)
+    with _state_lock:
+        _state["identity"] = snapshot["device"]["identity"]
+    return {
+        "ok": True,
+        "reply": "Physical bill registered. Future BLE operations will reconnect automatically.",
+        "device": snapshot,
+        "broadcast": False,
+    }
+
+
 def _requested_cents(text: str) -> int:
     match = re.search(r"\$?\s*(\d+(?:\.\d{1,2})?)", text)
     return 500 if match is None else int(round(float(match.group(1)) * 100))
@@ -109,6 +216,121 @@ def _require_five(cents: int) -> dict[str, Any] | None:
     }
 
 
+def _inspect_registered_bill(
+    registry: DeviceRegistry | None = None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    selected = _registry(registry)
+    connection = selected.connect()
+    artifact = connection.get("artifact")
+    if artifact is None:
+        raise DeviceRegistryError(
+            "bill firmware does not expose artifact inventory; flash the new protocol firmware",
+            retryable=False,
+        )
+    return connection, artifact
+
+
+@_serialized_workflow
+def handle_send_usdt(
+    cents: int = 500,
+    service: RgbWebService | None = None,
+    registry: DeviceRegistry | None = None,
+) -> dict[str, Any]:
+    """Inspect Bill A, then read exactly one invoice and prepare confirmation."""
+    rejected = _require_five(cents)
+    if rejected is not None:
+        return rejected
+    try:
+        selected = _service(service)
+        if selected.role is not BillRole.A:
+            raise RgbWebError(
+                "this dock is the receiver; use Receive USDT",
+                retryable=False,
+                broadcast=False,
+            )
+        _connection, artifact = _inspect_registered_bill(registry)
+        if artifact["direction"] != "to-dock" or artifact["kind"] != int(
+            FrameKind.INVOICE
+        ):
+            raise RgbWebError(
+                "Bill A has no received invoice. On Bill A press once near Bill B, then try Send USDT again.",
+                retryable=True,
+                broadcast=False,
+            )
+        if artifact["denomination_cents"] != cents:
+            raise RgbWebError(
+                "the invoice amount on Bill A does not match $5.00",
+                retryable=False,
+                broadcast=False,
+            )
+    except Exception as exc:
+        result = _error(exc)
+        result["reply"] = result["error"]
+        result["pending"] = None
+        return result
+    return handle_plan(cents, selected)
+
+
+@_serialized_workflow
+def handle_receive_usdt(
+    cents: int = 500,
+    service: RgbWebService | None = None,
+    registry: DeviceRegistry | None = None,
+) -> dict[str, Any]:
+    """Inspect Bill B, then either stage its invoice or import its proof."""
+    rejected = _require_five(cents)
+    if rejected is not None:
+        return rejected
+    try:
+        selected = _service(service)
+        if selected.role is not BillRole.B:
+            raise RgbWebError(
+                "this dock is the sender; use Send USDT",
+                retryable=False,
+                broadcast=False,
+            )
+        _connection, artifact = _inspect_registered_bill(registry)
+    except Exception as exc:
+        result = _error(exc)
+        result["reply"] = result["error"]
+        result["pending"] = None
+        return result
+
+    direction = artifact["direction"]
+    kind = artifact["kind"]
+    if direction == "empty":
+        return handle_stage_invoice(cents, selected)
+    if direction == "to-dock" and kind == int(FrameKind.CONSIGNMENT):
+        return handle_import(selected)
+    if direction == "to-peer" and kind == int(FrameKind.INVOICE):
+        return {
+            "ok": True,
+            "reply": "Invoice is loaded on Bill B. Press Bill A once near Bill B, then use Send USDT on Dock A.",
+            "pending": None,
+            "broadcast": False,
+            "bill": _bill(),
+        }
+    if direction == "to-peer" and kind == int(FrameKind.CONSIGNMENT):
+        return {
+            "ok": True,
+            "reply": "Consignment is loaded on Bill B. Press the empty receiving bill once near it.",
+            "pending": None,
+            "broadcast": True,
+            "bill": _bill(),
+        }
+    result = _error(
+        RgbWebError(
+            "Bill B contains an unexpected artifact; do not discard it automatically",
+            retryable=False,
+            broadcast=False,
+        )
+    )
+    result["reply"] = result["error"]
+    result["pending"] = None
+    return result
+
+
+@_serialized_workflow
 def handle_stage_invoice(
     cents: int, service: RgbWebService | None = None
 ) -> dict[str, Any]:
@@ -184,6 +406,7 @@ def handle_stage_invoice(
     }
 
 
+@_serialized_workflow
 def handle_plan(cents: int, service: RgbWebService | None = None) -> dict[str, Any]:
     rejected = _require_five(cents)
     if rejected is not None:
@@ -244,6 +467,7 @@ def handle_plan(cents: int, service: RgbWebService | None = None) -> dict[str, A
     }
 
 
+@_serialized_workflow
 def handle_confirm(
     confirm_id: str,
     phrase: str,
@@ -367,6 +591,7 @@ def handle_confirm(
         }
 
 
+@_serialized_workflow
 def handle_retry_stage(service: RgbWebService | None = None) -> dict[str, Any]:
     try:
         selected = _service(service)
@@ -419,6 +644,7 @@ def handle_retry_stage(service: RgbWebService | None = None) -> dict[str, Any]:
     }
 
 
+@_serialized_workflow
 def handle_import(service: RgbWebService | None = None) -> dict[str, Any]:
     try:
         selected = _service(service)
@@ -592,6 +818,7 @@ def handle_chat(
     return {"ok": True, "reply": instruction, "pending": _bill()["pending"]}
 
 
+@_serialized_workflow
 def handle_cancel(confirm_id: str) -> dict[str, Any]:
     with _state_lock:
         pending = _state["pending"]
@@ -614,6 +841,19 @@ def _status_code(result: dict[str, Any]) -> int:
     if result.get("retryable"):
         return 503
     return 409
+
+
+def _startup_error_message(exc: Exception) -> str:
+    detail = f"{type(exc).__name__}: {exc}"
+    lowered = detail.lower()
+    if "429" in lowered or "too many requests" in lowered:
+        return (
+            "Mutinynet indexer rate limit (HTTP 429); stop both dock startup "
+            "attempts, wait, then start the roles sequentially"
+        )
+    if "timedout" in lowered or "timed out" in lowered:
+        return "Mutinynet indexer timed out; wait and retry this dock"
+    return detail
 
 
 class DockHandler(SimpleHTTPRequestHandler):
@@ -649,8 +889,20 @@ class DockHandler(SimpleHTTPRequestHandler):
                     "bind": f"{HOST}:{PORT}",
                     "mode": MODE,
                     "settlement": _state["settlement"],
+                    "device": (
+                        _device_registry.snapshot()
+                        if _device_registry is not None
+                        else None
+                    ),
                 },
             )
+            return
+        if path == "/api/device":
+            try:
+                self._json(200, {"ok": True, "device": _registry().snapshot()})
+            except Exception as exc:
+                result = _device_error(exc)
+                self._json(_status_code(result), result)
             return
         if path == "/api/bill":
             self._json(200, _bill())
@@ -668,6 +920,41 @@ class DockHandler(SimpleHTTPRequestHandler):
             return
         if path == "/api/chat":
             result = handle_chat(str(body.get("text") or ""))
+            self._json(_status_code(result), result)
+            return
+        if path == "/api/workflow/send":
+            try:
+                cents = int(body.get("cents", 500))
+            except (TypeError, ValueError):
+                self._json(400, {"ok": False, "error": "cents must be an integer"})
+                return
+            result = handle_send_usdt(cents)
+            self._json(_status_code(result), result)
+            return
+        if path == "/api/workflow/receive":
+            try:
+                cents = int(body.get("cents", 500))
+            except (TypeError, ValueError):
+                self._json(400, {"ok": False, "error": "cents must be an integer"})
+                return
+            result = handle_receive_usdt(cents)
+            self._json(_status_code(result), result)
+            return
+        if path == "/api/device/scan":
+            try:
+                timeout = float(body.get("timeout", 5))
+            except (TypeError, ValueError):
+                self._json(400, {"ok": False, "error": "timeout must be numeric"})
+                return
+            result = handle_device_scan(timeout)
+            self._json(_status_code(result), result)
+            return
+        if path == "/api/device/connect":
+            result = handle_device_connect(str(body.get("address") or "") or None)
+            self._json(_status_code(result), result)
+            return
+        if path == "/api/device/register":
+            result = handle_device_register(str(body.get("address") or ""))
             self._json(_status_code(result), result)
             return
         if path in {"/api/confirm", "/api/rgb/confirm"}:
@@ -715,20 +1002,31 @@ class DockHandler(SimpleHTTPRequestHandler):
 
 
 def main() -> None:
-    global _rgb_service
+    global _device_registry, _rgb_service
     service: RgbWebService | None = None
     try:
-        service = RgbWebService.from_env()
+        role = BillRole.parse(ROLE)
+        registry = DeviceRegistry.from_env(role)
+        gateway = RegisteredBillGateway(registry, timeout=registry.timeout)
+        service = RgbWebService.from_env(gateway=gateway)
         balance_cents = service.spendable_cents()
+    except KeyboardInterrupt:
+        if service is not None:
+            service.close()
+        print("bill web dock startup cancelled", file=sys.stderr)
+        return
     except Exception as exc:
         if service is not None:
             service.close()
         print(
-            f"live RGB web dock failed to initialize: {type(exc).__name__}: {exc}",
+            "live RGB web dock failed to initialize: "
+            f"{_startup_error_message(exc)}",
             file=sys.stderr,
         )
         raise SystemExit(1) from exc
+    _device_registry = registry
     _rgb_service = service
+    registered_device = registry.snapshot()["device"]
     with _state_lock:
         _state.update(
             {
@@ -739,6 +1037,11 @@ def main() -> None:
                 "settlement": "settled",
                 "asset_id": service.asset_id,
                 "asset_precision": service.asset_precision,
+                "identity": (
+                    registered_device["identity"]
+                    if registered_device is not None
+                    else "bill-unregistered"
+                ),
             }
         )
     try:
@@ -746,6 +1049,7 @@ def main() -> None:
     except Exception:
         service.close()
         _rgb_service = None
+        _device_registry = None
         raise
     print(
         f"bill web dock on http://{HOST}:{PORT}/  "
@@ -759,6 +1063,7 @@ def main() -> None:
         server.server_close()
         service.close()
         _rgb_service = None
+        _device_registry = None
 
 
 if __name__ == "__main__":

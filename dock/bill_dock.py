@@ -7,6 +7,7 @@ import asyncio
 import hashlib
 import os
 import sys
+import struct
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -29,7 +30,8 @@ DENOMINATION = "7c3e9a10-4b1e-4c8f-9d2a-00b111d0c004"
 CMD = "7c3e9a10-4b1e-4c8f-9d2a-00b111d0c005"
 CHUNK_IN = "7c3e9a10-4b1e-4c8f-9d2a-00b111d0c006"
 CHUNK_OUT = "7c3e9a10-4b1e-4c8f-9d2a-00b111d0c007"
-DIAGNOSTIC_COMMAND = b"diag:display:500:pending"
+ARTIFACT_META = "7c3e9a10-4b1e-4c8f-9d2a-00b111d0c008"
+DIAGNOSTIC_COMMAND = b"diag:display:empty"
 CHUNK_ECHO_COMMAND = b"diag:chunk:echo"
 CHUNK_DISCARD_COMMAND = b"chunk:discard"
 VALID_STATUSES = {"idle", "tap", "pending", "settled", "error"}
@@ -51,6 +53,32 @@ class BillState:
     identity: str
     status: str
     denomination: int
+    artifact: ArtifactMetadata | None = None
+
+
+@dataclass(frozen=True)
+class ArtifactMetadata:
+    """One physical artifact currently stored on the bill."""
+
+    direction: str
+    kind: FrameKind | None
+    session_id: int
+    size: int
+    denomination_cents: int
+
+    @property
+    def empty(self) -> bool:
+        return self.direction == "empty"
+
+
+@dataclass(frozen=True)
+class BillCandidate:
+    """One advertisement authorized for display in the dock picker."""
+
+    address: str
+    name: str
+    rssi: int
+    service_uuid: str = DOCK_SERVICE
 
 
 async def _discover(timeout: float):
@@ -75,6 +103,34 @@ def _matches(device, advertisement, name: str) -> bool:
     return advertised == name or DOCK_SERVICE.lower() in services
 
 
+async def discover_bill_candidates(timeout: float) -> list[BillCandidate]:
+    """List nearby bills that advertise the frozen dock service.
+
+    A friendly name alone is insufficient for the web picker. The service UUID
+    must be present, and any advertised name must belong to the RgbBill family.
+    The later read-only connection validates the required characteristics.
+    """
+    expected_name = os.environ.get("BLE_DEVICE_NAME", DEFAULT_NAME)
+    candidates: list[BillCandidate] = []
+    for device, advertisement in await _discover(timeout):
+        services = {uuid.lower() for uuid in (advertisement.service_uuids or [])}
+        if DOCK_SERVICE.lower() not in services:
+            continue
+        advertised = advertisement.local_name or device.name or ""
+        if advertised and not (
+            advertised == expected_name or advertised.startswith(f"{expected_name}-")
+        ):
+            continue
+        candidates.append(
+            BillCandidate(
+                address=device.address,
+                name=advertised or expected_name,
+                rssi=int(advertisement.rssi),
+            )
+        )
+    return sorted(candidates, key=lambda candidate: candidate.rssi, reverse=True)
+
+
 async def _find_target(timeout: float, address: str | None = None):
     adapter = os.environ.get("BLE_ADAPTER") or None
     if address:
@@ -94,15 +150,54 @@ async def _read_text(client, uuid: str, timeout: float) -> str:
     return raw.decode("utf-8", errors="replace")
 
 
-async def _read_state(client, timeout: float) -> tuple[str, str, str]:
+def decode_artifact_metadata(raw: bytes) -> ArtifactMetadata:
+    if len(raw) != 16:
+        raise ValueError("bill returned invalid artifact metadata length")
+    version, direction, raw_kind, reserved, session_id, size, cents = struct.unpack(
+        "<BBBBIII", raw
+    )
+    if version != 1 or reserved != 0 or direction not in (0, 1, 2):
+        raise ValueError("bill returned invalid artifact metadata header")
+    if direction == 0:
+        if raw_kind != 0 or session_id != 0 or size != 0 or cents != 0:
+            raise ValueError("empty bill returned non-empty artifact metadata")
+        return ArtifactMetadata("empty", None, 0, 0, 0)
+    try:
+        kind = FrameKind(raw_kind)
+    except ValueError as exc:
+        raise ValueError("bill returned invalid artifact kind") from exc
+    if kind not in (FrameKind.INVOICE, FrameKind.CONSIGNMENT) or not size:
+        raise ValueError("bill returned incomplete artifact metadata")
+    return ArtifactMetadata(
+        "to-peer" if direction == 1 else "to-dock",
+        kind,
+        session_id,
+        size,
+        cents,
+    )
+
+
+async def _read_state(client, timeout: float) -> tuple[str, str, str, ArtifactMetadata]:
     identity_value = await _read_text(client, IDENTITY, timeout)
     status_value = await _read_text(client, STATUS, timeout)
     denomination_value = await _read_text(client, DENOMINATION, timeout)
-    return identity_value, status_value, denomination_value
+    artifact_raw = bytes(
+        await asyncio.wait_for(client.read_gatt_char(ARTIFACT_META), timeout=timeout)
+    )
+    return (
+        identity_value,
+        status_value,
+        denomination_value,
+        decode_artifact_metadata(artifact_raw),
+    )
 
 
 def _validated_state(
-    address: str, identity_value: str, status_value: str, denomination_value: str
+    address: str,
+    identity_value: str,
+    status_value: str,
+    denomination_value: str,
+    artifact: ArtifactMetadata | None = None,
 ) -> BillState:
     if status_value not in VALID_STATUSES:
         raise ValueError(f"bill returned invalid status {status_value!r}")
@@ -114,7 +209,9 @@ def _validated_state(
         ) from exc
     if denomination < 0:
         raise ValueError("bill returned a negative denomination")
-    return BillState(address, identity_value, status_value, denomination)
+    if artifact is not None and denomination != artifact.denomination_cents:
+        raise ValueError("bill denomination does not match stored artifact metadata")
+    return BillState(address, identity_value, status_value, denomination, artifact)
 
 
 async def read_bill_state(
@@ -133,7 +230,7 @@ async def read_bill_state(
 async def run_display_diagnostic(
     timeout: float, address: str | None = None
 ) -> BillState:
-    """Write the one frozen no-wallet diagnostic and verify bill state."""
+    """Write the no-wallet display diagnostic without inventing an amount."""
     target = await _find_target(timeout, address)
     if target is None:
         qualifier = f" at {address}" if address else ""
@@ -143,9 +240,13 @@ async def run_display_diagnostic(
             client.write_gatt_char(CMD, DIAGNOSTIC_COMMAND, response=True),
             timeout=timeout,
         )
-        values = await _read_state(client, timeout)
+        values = (
+            await _read_text(client, IDENTITY, timeout),
+            await _read_text(client, STATUS, timeout),
+            await _read_text(client, DENOMINATION, timeout),
+        )
     bill_state = _validated_state(target.address, *values)
-    if bill_state.status != "pending" or bill_state.denomination != 500:
+    if bill_state.status != "idle" or bill_state.denomination != 0:
         raise ValueError(
             "diagnostic verification failed: "
             f"status={bill_state.status!r} denomination={bill_state.denomination!r}"
@@ -172,6 +273,7 @@ async def send_chunk_file(
     *,
     payload_bytes: int = DEFAULT_PAYLOAD_BYTES,
     echo: bool = False,
+    denomination_cents: int = 0,
 ) -> tuple[int, bytes | None]:
     """Send one opaque RGB artifact and optionally verify a byte-exact echo."""
     target = await _find_target(timeout, address)
@@ -184,6 +286,14 @@ async def send_chunk_file(
         )
         await transport.start()
         try:
+            if denomination_cents:
+                command = (
+                    f"artifact:prepare:{int(kind)}:{denomination_cents}".encode()
+                )
+                await asyncio.wait_for(
+                    client.write_gatt_char(CMD, command, response=True),
+                    timeout=timeout,
+                )
             if echo:
                 await asyncio.wait_for(
                     client.write_gatt_char(
@@ -222,6 +332,23 @@ async def receive_chunk_file(
     if target is None:
         raise BillNotFoundError(f"no RgbBill advertisement at {address}")
     async with BleakClient(target, timeout=timeout) as client:
+        metadata = decode_artifact_metadata(
+            bytes(
+                await asyncio.wait_for(
+                    client.read_gatt_char(ARTIFACT_META), timeout=timeout
+                )
+            )
+        )
+        if metadata.direction != "to-dock":
+            raise ChunkProtocolError(
+                "bill has no artifact ready for the dock; inspect the bill and tap first"
+            )
+        if expected_kind is not None and metadata.kind != expected_kind:
+            raise ChunkProtocolError(
+                f"bill contains {metadata.kind.name.lower()}, not {expected_kind.name.lower()}"
+            )
+        if expected_session_id is None:
+            expected_session_id = metadata.session_id
         transport = ChunkTransport(
             client, CHUNK_IN, CHUNK_OUT, timeout=timeout
         )
@@ -261,16 +388,13 @@ async def discard_staged_chunk(timeout: float, address: str) -> None:
 async def scan(timeout: float) -> int:
     name = os.environ.get("BLE_DEVICE_NAME", DEFAULT_NAME)
     _emit(f"scanning {timeout:.0f}s for name={name!r} service={DOCK_SERVICE}")
-    found = 0
-    for device, advertisement in await _discover(timeout):
-        if _matches(device, advertisement, name):
-            found += 1
-            advertised = advertisement.local_name or device.name or ""
-            _emit(
-                f"{device.address}  rssi={advertisement.rssi}  "
-                f"name={advertised!r}"
-            )
-    if found == 0:
+    candidates = await discover_bill_candidates(timeout)
+    for candidate in candidates:
+        _emit(
+            f"{candidate.address}  rssi={candidate.rssi}  "
+            f"name={candidate.name!r}"
+        )
+    if not candidates:
         _emit("no RgbBill advertisements")
         return 1
     return 0
@@ -302,12 +426,18 @@ async def state(timeout: float, address: str | None = None) -> int:
     _emit(
         f"{bill_state.address}  identity={bill_state.identity}  "
         f"status={bill_state.status}  denomination={bill_state.denomination}"
+        + (
+            "  artifact=legacy"
+            if bill_state.artifact is None
+            else f"  artifact={bill_state.artifact.direction}:"
+            f"{bill_state.artifact.kind.name.lower() if bill_state.artifact.kind else 'empty'}"
+        )
     )
     return 0
 
 
 async def diagnostic(timeout: float, address: str | None = None) -> int:
-    """Run the fixed no-wallet $5/PENDING display diagnostic."""
+    """Run the no-wallet display diagnostic with no numeric amount."""
     try:
         bill_state = await run_display_diagnostic(timeout, address)
     except (BillNotFoundError, ValueError) as exc:
@@ -328,6 +458,7 @@ async def chunk_send(
     payload_bytes: int,
     *,
     echo: bool,
+    denomination_cents: int = 0,
 ) -> int:
     try:
         session_id, echoed = await send_chunk_file(
@@ -337,6 +468,7 @@ async def chunk_send(
             path,
             payload_bytes=payload_bytes,
             echo=echo,
+            denomination_cents=denomination_cents,
         )
     except (BillNotFoundError, ChunkProtocolError, OSError, asyncio.TimeoutError) as exc:
         _emit(f"chunk transfer failed: {exc}")
@@ -416,7 +548,7 @@ def main(argv: list[str] | None = None) -> int:
     state_p.add_argument("--timeout", type=float, default=5.0)
     state_p.add_argument("--address", help="read only this BLE address")
     diagnostic_p = sub.add_parser(
-        "diagnostic", help="show the fixed $5.00 / PENDING hardware diagnostic"
+        "diagnostic", help="show DISPLAY TEST without a numeric amount"
     )
     diagnostic_p.add_argument("--timeout", type=float, default=5.0)
     diagnostic_p.add_argument("--address", help="target this BLE address")
@@ -430,6 +562,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     chunk_send_p.add_argument("--input", type=Path, required=True)
     chunk_send_p.add_argument("--payload-bytes", type=int, default=DEFAULT_PAYLOAD_BYTES)
+    chunk_send_p.add_argument("--denomination-cents", type=int, default=0)
     chunk_loopback_p = sub.add_parser(
         "chunk-loopback", help="send and byte-verify the safe firmware echo"
     )
@@ -440,6 +573,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     chunk_loopback_p.add_argument("--input", type=Path, required=True)
     chunk_loopback_p.add_argument("--payload-bytes", type=int, default=DEFAULT_PAYLOAD_BYTES)
+    chunk_loopback_p.add_argument("--denomination-cents", type=int, default=0)
     chunk_receive_p = sub.add_parser(
         "chunk-receive", help="receive a bill-originated invoice or consignment"
     )
@@ -471,6 +605,7 @@ def main(argv: list[str] | None = None) -> int:
                 args.input,
                 args.payload_bytes,
                 echo=False,
+                denomination_cents=args.denomination_cents,
             )
         )
     if args.cmd == "chunk-loopback":
@@ -482,6 +617,7 @@ def main(argv: list[str] | None = None) -> int:
                 args.input,
                 args.payload_bytes,
                 echo=True,
+                denomination_cents=args.denomination_cents,
             )
         )
     if args.cmd == "chunk-receive":

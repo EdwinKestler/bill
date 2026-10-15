@@ -25,24 +25,43 @@ set -a; source .env.b; set +a
 
 Open <http://127.0.0.1:8789/>. The startup balance should match wallet B.
 
-The current bench role files bind A to `30:AE:A4:4C:B1:6A` and B to
-`30:AE:A4:07:2D:2E`. Each server opens only its own wallet datadir.
+Each server opens only its own wallet datadir.
+
+## Register one physical bill per dock
+
+Do this once on each role page before the transfer:
+
+1. Select **Scan**. Only an RgbBill-family advertisement carrying service UUID
+   `7c3e9a10-4b1e-4c8f-9d2a-00b111d0c001` should appear.
+2. Select the intended device and choose **Connect**. Expect its address,
+   identity, status, denomination, and artifact inventory to pass a read-only
+   GATT check.
+3. Choose **Register selected**. The badge changes to **Verified** and one
+   role-scoped ignored registration is stored.
+4. Restart the same server when convenient. The saved bill is loaded without
+   waiting for BLE. **Connect** and later invoice/consignment operations open
+   an on-demand connection to that address.
+
+Do not change registration while a transfer, confirmation, or recovery is
+active. The server rejects that switch. A UUID match proves protocol
+compatibility, not cryptographic ownership; the operator's physical selection
+is still part of this prototype's trust boundary.
 
 ## $5 transfer through the browser
 
-1. On dock B, enter `prepare bill for $5`.
+1. On dock B, select **Receive USDT**.
    - Expect a real transport-free invoice receipt and BLE session ID.
    - The server never adds a proxy endpoint.
-2. Press the TTGO touch input once and release it.
-3. On dock A, enter `bill for $5`.
+2. When Bill B shows `$5.00 / INVOICE TAP`, press Bill A once nearby.
+3. When Bill A shows `$5.00 / INVOICE DOCK`, select **Send USDT** on Dock A.
    - The server retrieves and parses the invoice, then shows the immutable
      recipient, 5,000,000 base-unit amount, balance, fee, expiry, and hashes.
 4. Type the displayed `CONFIRM <plan_id>` phrase exactly and select
    **Broadcast once**.
    - A mismatch cannot call send.
    - A successful send consumes the plan exactly once.
-5. Wait for `consignment-staged`, then press the WEMOS touch input once.
-6. On dock B, enter `import consignment`.
+5. When Bill A shows `$5.00 / PROOF TAP`, press Bill B once nearby.
+6. When Bill B shows `$5.00 / PROOF DOCK`, select **Receive USDT** on Dock B.
    - The exact received artifact is persisted before wallet import.
 7. On each dock, enter `status` until the local transfer reports `settled`.
    - Refresh runs through the wallet already owned by that server; do not open
@@ -50,7 +69,7 @@ The current bench role files bind A to `30:AE:A4:4C:B1:6A` and B to
 
 ## Recovery boundaries
 
-- Invoice BLE failure: repeat `prepare bill for $5`; the service reuses the
+- Invoice BLE failure: select **Receive USDT** again; the service reuses the
   retained invoice instead of creating another one.
 - Confirmation mismatch: correct the phrase. Nothing was broadcast and the
   displayed plan remains pending.
@@ -59,7 +78,7 @@ The current bench role files bind A to `30:AE:A4:4C:B1:6A` and B to
 - Broadcast succeeded but consignment staging failed: enter `retry stage` or
   call `POST /api/rgb/retry-stage`. This stages the retained consignment and
   cannot call send.
-- Import failed after receipt: enter `import consignment` again. The service
+- Import failed after receipt: select **Receive USDT** again. The service
   reuses the persisted artifact and does not require a second tap.
 - Cancel closes and invalidates the web-visible plan without broadcasting.
 
@@ -68,7 +87,13 @@ The current bench role files bind A to `30:AE:A4:4C:B1:6A` and B to
 | Endpoint | Role | Operation |
 | --- | --- | --- |
 | `GET /api/health` | A/B | Live service readiness |
+| `GET /api/device` | A/B | Saved selection and last verification snapshot |
 | `GET /api/bill` | A/B | Projected balance, pending plan, receipts, recovery |
+| `POST /api/device/scan` | A/B | List strict service-UUID/name matches |
+| `POST /api/device/connect` | A/B | Read-only GATT identity/state verification |
+| `POST /api/device/register` | A/B | Verify and atomically replace the one saved bill |
+| `POST /api/workflow/send` | A | Inventory-check invoice, then prepare send plan |
+| `POST /api/workflow/receive` | B | Inventory-check, then stage invoice or import proof |
 | `POST /api/rgb/invoice` | B | Create/stage transport-free witness invoice |
 | `POST /api/rgb/plan` | A | Retrieve invoice and prepare immutable send plan |
 | `POST /api/rgb/confirm` | A | Exact phrase, one send, then consignment staging |

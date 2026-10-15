@@ -13,13 +13,14 @@ flowchart LR
         cmd["CMD c005 | Write with response | UTF-8 command v1"]:::implemented
         chunkIn["CHUNK_IN c006 | Write with response | data or ACK"]:::implemented
         chunkOut["CHUNK_OUT c007 | Notify | ACK or data"]:::implemented
+        artifact["ARTIFACT_META c008 | Read | direction kind session size cents"]:::implemented
     end
 
     sender["Staged bill as BLE peripheral sender"]:::peer
     receiver["Empty bill as gated central receiver"]:::peer
 
-    subgraph tapService["Tap service 7a0002 implemented v1"]
-        meta["META 0003 | Read | 12 byte session metadata"]:::implemented
+    subgraph tapService["Tap service 7a0002 implemented v2"]
+        meta["META 0003 | Read | 16 byte session and cents metadata"]:::implemented
         control["CONTROL 0004 | Write | START or CANCEL"]:::implemented
         tapIn["CHUNK_IN 0005 | Write | ACK"]:::implemented
         tapOut["CHUNK_OUT 0006 | Notify | opaque data"]:::implemented
@@ -29,6 +30,7 @@ flowchart LR
     bill --> identity
     bill --> status
     bill --> denomination
+    bill --> artifact
     dock --> cmd
     dock --> chunkIn
     chunkOut --> dock

@@ -4,8 +4,9 @@ Rendered architecture, sequence, state, protocol, hardware, and trust diagrams
 are indexed in [docs/diagrams/README.md](diagrams/README.md). Their editable
 Mermaid sources live beside the PNGs under `docs/diagrams/src/`.
 
-Physical USDT notes. Speak to the dock assistant: “bill for $5”. Tap two
-pucks. Value moves. No QR, no unlocking a phone app for the transfer.
+Physical USDT notes. The dock exposes two explicit human actions: **Send
+USDT** and **Receive USDT**. Tap two bills once when instructed. No QR, no
+phone app, and no guessing whether the bill should be read or written.
 
 ## Roles
 
@@ -13,20 +14,32 @@ pucks. Value moves. No QR, no unlocking a phone app for the transfer.
 | --- | --- | --- |
 | Dock A / Dock B | Two laptops | Python web desk (`web/`, :8788), Bleak GATT (`dock/`), rgb-lib-python, QVAC voice, Mutinynet broadcast |
 | Bill A / Bill B | WEMOS LOLIN32 and LilyGO TTGO LoRa32 V1.3 / ESP32 | SSD1306 OLED or external ILI9341 TFT, tap input, radio. **No** rgb-lib, **no** QVAC |
-| GATT-dock | laptop ↔ its bill | Persistent pairing. Commands, status, denomination, consignment chunks |
+| GATT-dock | laptop ↔ its bill | On-demand connection. Inventory, commands, status, denomination, opaque chunks |
 | GATT-tap | bill ↔ bill | A press edge arms a bounded receiver window; high RSSI gates the peer. Carries invoice + consignment |
 
 Each bill is its own rgb-lib wallet (own mnemonic, own datadir). The dock
 mounts that wallet for the transfer, then the only copy of the stash is the
 bill’s pairing to that dock. Never open the same datadir in two processes.
 
+Each role-specific web dock registers one physical bill. Discovery requires
+the frozen dock service UUID plus an RgbBill-family advertised name; a
+read-only core-state connection verifies the target before its address is
+saved. Every later connection reads the artifact inventory (empty, invoice,
+or consignment; to-peer or to-dock) before selecting a transfer direction.
+Transfers reconnect to that saved address on demand. Registration is
+locked while a transfer or recovery boundary is active. This is prototype
+device selection, not cryptographic device ownership authentication.
+
 ## RGB mapping
 
-1. QVAC on dock A: “print a 5 dollar bill” → fund wallet A with 5 USDT.
-2. Empty bill B: dock B calls `witness_receive` (empty bill has no colorable UTXO).
-3. Tap: invoice B→A over GATT-tap, whole-balance send `donation=true`, consignment A→B.
+1. Dock B **Receive USDT** creates a $5 witness invoice and loads Bill B.
+2. Tap moves the invoice B→A; Dock A **Send USDT** reads it and presents the
+   exact confirmation gate.
+3. After the one authorized Mutinynet broadcast, tap moves the exact
+   consignment A→B; Dock B **Receive USDT** reads and imports it.
 4. Empty `transport_endpoints`. Use rgb-lib out-of-band consignment receive. Docks do not exchange the packet over Wi‑Fi.
-5. Broadcast Mutinynet. OLED: `$5` → `TAP` → `PENDING` → `$0` / `$5`.
+5. The board display shows an amount only while a complete invoice or
+   consignment is physically stored. Empty inventory displays no amount.
 
 The dock adapter enforces this as two isolated processes, not one process with
 two wallet objects. Bill B creates the witness invoice. Bill A reads its full
@@ -45,6 +58,9 @@ On-chain rgb-lib, not RLN. Lightning is a channel, not a note.
 - GATT-dock chunk v1 is implemented: CRC32, ordered stop-and-wait frames,
   per-frame ACKs, and one opaque SPIFFS-staged artifact up to 640 KiB. Its
   diagnostic echo validates both directions without invoking a wallet.
+- Dock artifact inventory v1 is a 16-byte read-only characteristic. It makes
+  connect-time direction selection deterministic and prevents blind
+  CHUNK_OUT waits.
 - GATT-tap: the bill holding the staged artifact stays **peripheral/sender**;
   one debounced tap on the empty bill arms a 15-second **central/receiver**
   window. The operator may release immediately. The receiver connects only if
@@ -80,7 +96,7 @@ On-chain rgb-lib, not RLN. Lightning is a channel, not a note.
 1. Two rgb-lib wallets, witness + OOB consignment over USB serial, docks drive OLEDs/LEDs.
 2. Replace the cable with dock GATT chunks. **Implemented and physically
    accepted on both boards.**
-3. Tap GATT + RSSI/button. **Implemented and physically accepted in both
+3. Tap GATT + RSSI/button v1. **Implemented and physically accepted in both
    directions with byte-exact 520-byte invoice/consignment fixtures.**
 4. Replace fixtures with real isolated-wallet artifacts. **Bridge implemented
    and live accepted with a confirmed 20 USDT Mutinynet transfer on
@@ -89,6 +105,8 @@ On-chain rgb-lib, not RLN. Lightning is a channel, not a note.
    exact typed confirmation and no-resend recovery; browser-driven physical
    acceptance remains.**
 6. Connect QVAC “print a five” intent parsing to the accepted web action.
+7. Human-first inventory/tap metadata v2. **Implemented and build-verified;
+   physical acceptance is pending a two-board flash.**
 
 ## Web dock language
 

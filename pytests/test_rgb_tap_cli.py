@@ -55,7 +55,7 @@ class FakeFlow:
         self.executed.append(plan_id)
         return self.consignment
 
-    def stage_consignment(self, _consignment):
+    def stage_consignment(self, _consignment, denomination_cents=0):
         if self.stage_fails:
             raise RuntimeError("BLE unavailable")
         return SimpleNamespace(
@@ -69,6 +69,7 @@ def args() -> Namespace:
         address="30:AE:A4:4C:B1:6A",
         asset_id="rgb:usdt",
         amount=200,
+        denomination_cents=500,
         expires_seconds=900,
         invoice_file=None,
     )

@@ -172,8 +172,17 @@ def test_dock_gatt_exposes_state_and_fixed_diagnostic():
     assert "BLE_UUIDs::DENOMINATION" in dock_source
     assert "BLE_UUIDs::CMD" in dock_source
     assert "BLECharacteristic::PROPERTY_NOTIFY" in dock_source
-    assert 'command == "diag:display:500:pending"' in dock_source
-    assert 'setState(500, "pending", "PENDING")' in dock_source
+    assert 'command == "diag:display:empty"' in dock_source
+    assert 'setState(0, "idle", "DISPLAY TEST")' in dock_source
+
+    oled = (ROOT / "lib" / "BillDisplay" / "src" / "BillDisplay.cpp").read_text(
+        encoding="utf-8"
+    )
+    tft = (
+        ROOT / "lib" / "TftBillDisplay" / "src" / "TftBillDisplay.cpp"
+    ).read_text(encoding="utf-8")
+    assert "if (cents > 0)" in oled
+    assert "if (cents > 0)" in tft
 
 
 def test_dock_gatt_exposes_chunk_fsm_and_polls_it():

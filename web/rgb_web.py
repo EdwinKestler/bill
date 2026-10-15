@@ -15,6 +15,7 @@ from web.rgb.config import BillRole, RgbSettings, SettingsError
 from web.rgb.runtime import open_adapter
 from web.rgb.tap_flow import (
     BillChunkGateway,
+    ChunkGateway,
     InvoiceTransferPlan,
     ReceivedArtifact,
     StagedArtifact,
@@ -84,11 +85,12 @@ class RgbWebService:
         self.role = flow.adapter.settings.role
         self._lock = threading.RLock()
         self._pending_invoice: tuple[int, ReceiveIntent, StoredArtifact] | None = None
-        self._pending_consignment: ConsignmentArtifact | None = None
+        self._pending_consignment: tuple[int, ConsignmentArtifact] | None = None
+        self._planned_cents: dict[str, int] = {}
         self._pending_import: ReceivedArtifact | None = None
 
     @classmethod
-    def from_env(cls) -> RgbWebService:
+    def from_env(cls, *, gateway: ChunkGateway | None = None) -> RgbWebService:
         settings = RgbSettings.from_env(require_credentials=True)
         if settings.max_consignment_bytes > MAX_TRANSFER_BYTES:
             raise SettingsError(
@@ -100,16 +102,19 @@ class RgbWebService:
             precision = int(os.environ.get("RGB_ASSET_PRECISION", ""))
         except ValueError as exc:
             raise SettingsError("RGB_ASSET_PRECISION must be an integer") from exc
-        address = os.environ.get("BLE_DEVICE_ADDRESS", "").strip()
-        if not address:
-            raise SettingsError("BLE_DEVICE_ADDRESS is required for the live web dock")
         try:
             timeout = float(os.environ.get("BLE_TIMEOUT_SECONDS", "8"))
         except ValueError as exc:
             raise SettingsError("BLE_TIMEOUT_SECONDS must be numeric") from exc
         if timeout <= 0:
             raise SettingsError("BLE_TIMEOUT_SECONDS must be positive")
-        gateway = BillChunkGateway(address, timeout=timeout)
+        if gateway is None:
+            address = os.environ.get("BLE_DEVICE_ADDRESS", "").strip()
+            if not address:
+                raise SettingsError(
+                    "BLE_DEVICE_ADDRESS is required when no device registry is used"
+                )
+            gateway = BillChunkGateway(address, timeout=timeout)
         adapter = open_adapter(settings)
         try:
             return cls(
@@ -179,7 +184,7 @@ class RgbWebService:
                     recovery_path=artifact.path,
                 )
             try:
-                staged = self.flow.stage_artifact(artifact)
+                staged = self.flow.stage_artifact(artifact, cents)
             except Exception as exc:
                 return InvoiceStageOutcome(
                     cents,
@@ -209,11 +214,13 @@ class RgbWebService:
             )
         amount = self.amount_base_units(cents)
         with self._lock:
-            return self.flow.receive_and_plan_invoice(
+            prepared = self.flow.receive_and_plan_invoice(
                 expected_asset_id=self.asset_id,
                 amount=amount,
                 expires_in_seconds=expires_in_seconds,
             )
+            self._planned_cents[prepared.plan.plan_id] = cents
+            return prepared
 
     def confirm_and_stage(self, plan_id: str, phrase: str) -> SendStageOutcome:
         if self.role is not BillRole.A:
@@ -241,7 +248,11 @@ class RgbWebService:
                     retryable=False,
                     broadcast=None,
                 ) from exc
-            self._pending_consignment = consignment
+            # The current physical product denomination is fixed at $5.00.
+            # Normal web plans populate this map; the fallback keeps recovery
+            # compatible with plans created before artifact metadata v1.
+            cents = self._planned_cents.pop(plan_id, 500)
+            self._pending_consignment = (cents, consignment)
             return self._stage_pending_consignment()
 
     def retry_consignment_stage(self) -> SendStageOutcome:
@@ -261,15 +272,16 @@ class RgbWebService:
             return self._stage_pending_consignment()
 
     def _stage_pending_consignment(self) -> SendStageOutcome:
-        consignment = self._pending_consignment
-        if consignment is None:
+        pending = self._pending_consignment
+        if pending is None:
             raise RgbWebError(
                 "there is no retained consignment to stage",
                 retryable=False,
                 broadcast=False,
             )
+        cents, consignment = pending
         try:
-            staged = self.flow.stage_consignment(consignment)
+            staged = self.flow.stage_consignment(consignment, cents)
         except Exception as exc:
             return SendStageOutcome(
                 consignment,

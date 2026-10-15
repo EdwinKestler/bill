@@ -65,7 +65,7 @@ class RecoveryFlow:
         self.create_invoice_calls += 1
         return ReceiveIntent("invoice", "recipient", 1900, 4), self.invoice
 
-    def stage_artifact(self, artifact):
+    def stage_artifact(self, artifact, denomination_cents=0):
         self.stage_artifact_calls += 1
         if self.stage_artifact_calls == 1:
             raise RuntimeError("BLE unavailable")
@@ -76,7 +76,7 @@ class RecoveryFlow:
         self.execute_calls += 1
         return self.consignment
 
-    def stage_consignment(self, _artifact):
+    def stage_consignment(self, _artifact, denomination_cents=0):
         self.stage_consignment_calls += 1
         if self.stage_consignment_calls == 1:
             raise RuntimeError("BLE unavailable")

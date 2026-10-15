@@ -11,6 +11,7 @@ void test_metadata_round_trip() {
   input.kind = 2;
   input.sessionId = 0x78563412U;
   input.size = 655360U;
+  input.denominationCents = 500U;
   std::array<uint8_t, rgbbill::tap::METADATA_SIZE> encoded{};
   TEST_ASSERT_TRUE(rgbbill::tap::encodeMetadata(input, encoded.data(),
                                                 encoded.size()));
@@ -21,11 +22,28 @@ void test_metadata_round_trip() {
   TEST_ASSERT_EQUAL_UINT8(2, decoded.kind);
   TEST_ASSERT_EQUAL_HEX32(0x78563412U, decoded.sessionId);
   TEST_ASSERT_EQUAL_UINT32(655360U, decoded.size);
+  TEST_ASSERT_EQUAL_UINT32(500U, decoded.denominationCents);
+}
+
+void test_metadata_decodes_legacy_v1_without_denomination() {
+  std::array<uint8_t, rgbbill::tap::LEGACY_METADATA_SIZE> encoded{};
+  encoded[0] = rgbbill::tap::LEGACY_VERSION;
+  encoded[1] = 1;
+  encoded[2] = 1;
+  encoded[4] = 0x12;
+  encoded[8] = 0x34;
+  rgbbill::tap::Metadata decoded;
+  TEST_ASSERT_TRUE(rgbbill::tap::decodeMetadata(encoded.data(), encoded.size(),
+                                                decoded));
+  TEST_ASSERT_EQUAL_UINT8(1, decoded.kind);
+  TEST_ASSERT_EQUAL_UINT32(0x12U, decoded.sessionId);
+  TEST_ASSERT_EQUAL_UINT32(0x34U, decoded.size);
+  TEST_ASSERT_EQUAL_UINT32(0U, decoded.denominationCents);
 }
 
 void test_metadata_rejects_bad_version_and_reserved_byte() {
   std::array<uint8_t, rgbbill::tap::METADATA_SIZE> encoded{};
-  encoded[0] = 2;
+  encoded[0] = 3;
   rgbbill::tap::Metadata decoded;
   TEST_ASSERT_FALSE(rgbbill::tap::decodeMetadata(encoded.data(), encoded.size(),
                                                  decoded));
@@ -100,6 +118,7 @@ int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_metadata_round_trip);
   RUN_TEST(test_metadata_rejects_bad_version_and_reserved_byte);
+  RUN_TEST(test_metadata_decodes_legacy_v1_without_denomination);
   RUN_TEST(test_gate_emits_one_edge_per_debounced_press);
   RUN_TEST(test_gate_applies_rssi_independently_of_button_level);
   RUN_TEST(test_one_shot_arm_consumes_or_expires_once);

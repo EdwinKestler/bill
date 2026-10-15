@@ -8,10 +8,17 @@ sequenceDiagram
     participant chain as Mutinynet
 
     rect rgb(239, 246, 255)
+        human->>dockB: Receive USDT
+        dockB->>billB: Read inventory EMPTY
         dockB->>dockB: Create generic witness invoice
         dockB->>dockB: Require SIGNET_CUSTOM and empty endpoints
         dockB-->>billB: Invoice bytes over implemented GATT-dock chunks
-        billB-->>billA: Invoice chunks over gated GATT-tap implemented locally
+        billB-->>human: Display 5 dollars INVOICE TAP
+        human->>billA: Press once near Bill B
+        billB-->>billA: Invoice chunks over gated GATT-tap
+        billA-->>human: Display 5 dollars INVOICE DOCK
+        human->>dockA: Send USDT
+        dockA->>billA: Read inventory then exact invoice
         billA-->>dockA: Invoice bytes over implemented GATT-dock chunks
     end
 
@@ -26,9 +33,13 @@ sequenceDiagram
     end
 
     rect rgb(239, 246, 255)
-        dockA-->>billA: Consignment binary frames over GATT-dock
+        dockA-->>billA: Consignment plus denomination over GATT-dock
+        billA-->>human: Display 5 dollars PROOF TAP
+        human->>billB: Press once near Bill A
         billA-->>billB: Consignment binary frames over gated GATT-tap
-        billB-->>dockB: Consignment binary frames over GATT-dock
+        billB-->>human: Display 5 dollars PROOF DOCK
+        human->>dockB: Receive USDT
+        dockB->>billB: Read inventory then exact consignment
     end
 
     rect rgb(220, 252, 231)
@@ -36,10 +47,10 @@ sequenceDiagram
         dockB->>dockB: provide_out_of_band_consignment
         dockB->>chain: Refresh and validate witness anchor
         chain-->>dockB: One confirmation
-        dockB-->>billB: Show received denomination and SETTLED planned
-        dockA-->>billA: Show remaining denomination and SETTLED planned
+        billB-->>human: Inventory empty and amount hidden
+        billA-->>human: Inventory empty and amount hidden
     end
 
     Note over dockA,dockB: No proxy endpoint and no dock-to-dock Wi-Fi consignment path
     Note over dockA,dockB: Donation mode has no receiver ACK gate
-    Note over dockA,dockB: Live accepted on Mutinynet with 20 USDT on 2026-10-11
+    Note over dockA,dockB: Inventory revision is build verified and awaiting physical acceptance

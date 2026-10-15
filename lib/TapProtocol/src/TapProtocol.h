@@ -5,8 +5,10 @@
 
 namespace rgbbill::tap {
 
-constexpr uint8_t VERSION = 0x01;
-constexpr size_t METADATA_SIZE = 12;
+constexpr uint8_t VERSION = 0x02;
+constexpr uint8_t LEGACY_VERSION = 0x01;
+constexpr size_t LEGACY_METADATA_SIZE = 12;
+constexpr size_t METADATA_SIZE = 16;
 constexpr int16_t DEFAULT_RSSI_THRESHOLD_DBM = -60;
 constexpr uint32_t DEFAULT_BUTTON_DEBOUNCE_MS = 40;
 constexpr uint32_t DEFAULT_ARM_WINDOW_MS = 15000;
@@ -27,6 +29,7 @@ struct Metadata {
   uint8_t kind = 0;
   uint32_t sessionId = 0;
   uint32_t size = 0;
+  uint32_t denominationCents = 0;
 };
 
 bool encodeMetadata(const Metadata& metadata, uint8_t* output,

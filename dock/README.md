@@ -13,10 +13,11 @@ and performs no GATT writes. Pass `--address AA:BB:CC:DD:EE:FF` to select one
 bill explicitly. Chunks and rgb-lib send land here after the firmware contract
 is frozen; the wallet-to-chunk handoff remains explicit for acceptance.
 
-`state` reads `IDENTITY`, `STATUS`, and `DENOMINATION`. `diagnostic` is the
-frozen no-wallet hardware check: it writes only
-`diag:display:500:pending`, verifies the two state characteristics, and asks
-the OLED to show `$5.00 / PENDING`. It cannot provision or spend.
+`state` reads `IDENTITY`, `STATUS`, `DENOMINATION`, and the artifact inventory.
+`diagnostic` is the no-wallet hardware check: it writes only
+`diag:display:empty`, verifies the state characteristics, and asks the display
+to show `DISPLAY TEST` without inventing an amount. It cannot provision or
+spend.
 
 `chunk-send` stages the exact bytes of one RGB invoice or OOB consignment on
 the bill. `chunk-receive` atomically writes a bill-originated artifact to the

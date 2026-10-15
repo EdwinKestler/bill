@@ -77,6 +77,7 @@ constexpr char DENOMINATION[] = "7c3e9a10-4b1e-4c8f-9d2a-00b111d0c004";
 constexpr char CMD[] = "7c3e9a10-4b1e-4c8f-9d2a-00b111d0c005";
 constexpr char CHUNK_IN[] = "7c3e9a10-4b1e-4c8f-9d2a-00b111d0c006";
 constexpr char CHUNK_OUT[] = "7c3e9a10-4b1e-4c8f-9d2a-00b111d0c007";
+constexpr char ARTIFACT_META[] = "7c3e9a10-4b1e-4c8f-9d2a-00b111d0c008";
 constexpr char TAP_SERVICE[] = "7c3e9a10-4b1e-4c8f-9d2a-00b1117a0002";
 constexpr char TAP_META[] = "7c3e9a10-4b1e-4c8f-9d2a-00b1117a0003";
 constexpr char TAP_CONTROL[] = "7c3e9a10-4b1e-4c8f-9d2a-00b1117a0004";

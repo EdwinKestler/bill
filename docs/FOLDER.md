@@ -36,13 +36,14 @@ ideas/bill/                 this project (git + PlatformIO root)
   dock/                     Bleak central + dock core + chunk sender/receiver
   web/                      Python web dock (HTTP + live isolated RGB tap flow)
     server.py               role-specific loopback HTTP + safety state machine
+    device_registry.py      strict BLE picker + one role-scoped saved bill
     rgb_web.py              long-lived role wallet + retained-artifact recovery
-    static/                 denomination, chat, exact typed confirmation gate
+    static/                 bill picker, denomination, chat, confirmation gate
     rgb/                    isolated rgb-lib-python adapter + config check
     rust/                   optional native sidecar (not weekend path)
   docs/
     DESIGN.md               product + radio + RGB mapping
-    PROTOCOL.md             frozen dock core + physically accepted chunk/tap v1
+    PROTOCOL.md             human-first inventory + chunk/tap contract
     FOLDER.md               this file
     LOOKUP.md               Palimnex: parent rgbhackathon, no new silo
     agents-prompt.md        paste for other coding agents

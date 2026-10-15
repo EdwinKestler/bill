@@ -13,18 +13,64 @@
       <h1>Cash bill</h1>
       <p id="meta">loading…</p>
     </header>
+    <section class="device-panel" aria-labelledby="device-heading">
+      <div class="device-heading-row">
+        <div>
+          <p class="label">Physical bill</p>
+          <h2 id="device-heading">Choose this dock’s bill</h2>
+        </div>
+        <span id="device-badge" class="device-badge">Not registered</span>
+      </div>
+      <p id="device-summary" class="device-summary">
+        Scan for a nearby RgbBill advertising the authorized dock service.
+      </p>
+      <div class="device-actions">
+        <button id="scan-device" type="button">Scan</button>
+        <button id="connect-device" class="secondary" type="button" disabled>
+          Connect
+        </button>
+        <button id="register-device" type="button" disabled>
+          Register selected
+        </button>
+      </div>
+      <fieldset id="device-list" aria-live="polite">
+        <legend>Authorized nearby bills</legend>
+        <p class="empty-device-list">Select Scan to look for bills.</p>
+      </fieldset>
+      <p id="device-message" class="device-message" aria-live="polite"></p>
+      <p class="device-help">
+        Only devices advertising the RGBill dock service UUID are listed. A
+        read-only GATT check verifies identity before registration. One bill is
+        saved per dock role; transfers reconnect to it automatically.
+      </p>
+    </section>
     <section class="note" aria-live="polite">
-      <p class="label">This bill</p>
+      <p class="label">Wallet balance</p>
       <p id="denomination">$0.00</p>
       <p id="status">idle</p>
     </section>
+    <section class="workflow" aria-labelledby="workflow-heading">
+      <p class="label">One next action</p>
+      <h2 id="workflow-heading">Move $5.00 USDT</h2>
+      <p id="workflow-help">
+        Connect verifies what is physically stored on the bill before any read or write.
+      </p>
+      <div class="workflow-actions">
+        <button id="send-usdt" type="button">Send USDT</button>
+        <button id="receive-usdt" type="button">Receive USDT</button>
+      </div>
+      <p id="workflow-message" aria-live="polite"></p>
+    </section>
     <section class="chat">
+      <details>
+        <summary>Advanced text commands</summary>
       <ol id="log"></ol>
       <form id="form">
         <label for="text">Assistant</label>
         <input id="text" name="text" autocomplete="off" placeholder="bill for $5" />
-        <button type="submit">Send</button>
+        <button id="send" type="submit">Send</button>
       </form>
+      </details>
     </section>
   </main>
   <dialog id="confirm">

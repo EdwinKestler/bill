@@ -40,11 +40,11 @@ def test_all_frozen_dock_core_uuids_match():
     contract = json.loads(contract_text)
     config = CONFIG.read_text(encoding="utf-8")
     dock = DOCK.read_text(encoding="utf-8")
-    suffixes = range(1, 8)
+    suffixes = range(1, 9)
 
     assert (
         contract["status"]
-        == "dock-core-v1-frozen+chunk-v1+tap-v1-physical-accepted"
+        == "dock-core-v1+artifact-inventory-v1+chunk-v1+tap-v2-build-verified"
     )
     for suffix in suffixes:
         uuid = f"7c3e9a10-4b1e-4c8f-9d2a-00b111d0c00{suffix}"
@@ -54,8 +54,9 @@ def test_all_frozen_dock_core_uuids_match():
 
     characteristics = contract["services"]["dock"]["characteristics"]
     assert characteristics["cmd"]["commands"] == [
-        "diag:display:500:pending",
+        "diag:display:empty",
         "diag:chunk:echo",
+        "artifact:prepare:<kind>:<denomination_cents>",
         "chunk:discard",
     ]
     assert characteristics["chunk_in"]["implemented"] is True
@@ -99,13 +100,14 @@ def test_tap_v1_uuids_and_gate_match_firmware():
 
     tap = contract["services"]["tap"]
     assert tap["implemented"] is True
-    assert tap["physical_acceptance"] is True
-    assert tap["physical_acceptance_evidence"]["fixture_bytes"] == 520
+    assert tap["physical_acceptance"] is False
+    assert tap["build_verified"] is True
+    assert tap["previous_v1_physical_acceptance_evidence"]["fixture_bytes"] == 520
     assert (
-        tap["physical_acceptance_evidence"]["sha256"]
+        tap["previous_v1_physical_acceptance_evidence"]["sha256"]
         == "925a4bf7cdf591eea7e5b78975964aee5801417761474fe3588b385ba00bc014"
     )
-    assert tap["physical_acceptance_evidence"]["advertising_recovered_without_reset"]
+    assert tap["previous_v1_physical_acceptance_evidence"]["advertising_recovered_without_reset"]
     assert tap["gate"]["mode"] == "debounced-rising-edge-one-shot"
     assert tap["gate"]["arm_window_ms"] == 15_000
     assert tap["gate"]["second_press"] == "cancel"

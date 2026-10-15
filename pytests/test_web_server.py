@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from web import server as web_server
 from dock.chunk_protocol import FrameKind
 from web.rgb.adapter import ConsignmentArtifact, TransferPlan
 from web.rgb.backend import ParsedInvoice
@@ -13,13 +14,87 @@ from web.rgb.tap_flow import (
 from web.rgb_web import ImportOutcome, InvoiceStageOutcome, RgbWebError, SendStageOutcome
 from web.server import (
     MODE,
+    _startup_error_message,
     _state,
     handle_cancel,
     handle_chat,
     handle_confirm,
+    handle_device_connect,
+    handle_device_register,
+    handle_device_scan,
     handle_import,
     handle_retry_stage,
+    handle_send_usdt,
+    handle_receive_usdt,
 )
+
+
+class FakeDeviceRegistry:
+    def __init__(self):
+        self.address = None
+        self.guard_result = None
+
+    def scan(self, timeout):
+        assert timeout == 5
+        return [
+            {
+                "address": "AA:01",
+                "name": "RgbBill",
+                "rssi": -42,
+                "service_uuid": "service",
+                "registered": False,
+            }
+        ]
+
+    def connect(self, address):
+        return {
+            "connected": True,
+            "address": address,
+            "identity": "bill-picked",
+        }
+
+    def active_address(self):
+        return self.address
+
+    def register(self, address, *, guard):
+        self.guard_result = guard()
+        if not self.guard_result:
+            from web.device_registry import DeviceRegistryError
+
+            raise DeviceRegistryError(
+                "finish or recover the current transfer before changing bills",
+                retryable=False,
+            )
+        self.address = address
+        return self.snapshot()
+
+    def snapshot(self):
+        record = (
+            {
+                "address": self.address,
+                "identity": "bill-picked",
+            }
+            if self.address
+            else None
+        )
+        return {
+            "registered": record is not None,
+            "active_address": self.address,
+            "device": record,
+        }
+
+
+class InventoryRegistry:
+    def __init__(self, artifact):
+        self.artifact = artifact
+
+    def connect(self, _address=None):
+        return {
+            "connected": True,
+            "address": "AA:01",
+            "identity": "bill-picked",
+            "artifact": self.artifact,
+        }
 
 
 class FakeWebService:
@@ -267,3 +342,157 @@ def test_status_refreshes_through_same_live_wallet_service(tmp_path):
     assert "$60.00" in result["reply"]
     assert "settled" in result["reply"]
     assert _state["cents"] == 6000
+
+
+def test_device_scan_connect_and_register_update_selected_identity():
+    reset_state(role="A", cents=6000)
+    registry = FakeDeviceRegistry()
+
+    scanned = handle_device_scan(5, registry)
+    connected = handle_device_connect("AA:01", registry)
+    registered = handle_device_register("AA:01", registry)
+
+    assert scanned["ok"] is True
+    assert scanned["devices"][0]["address"] == "AA:01"
+    assert connected["ok"] is True
+    assert registered["ok"] is True
+    assert registered["device"]["active_address"] == "AA:01"
+    assert registry.guard_result is True
+    assert _state["identity"] == "bill-picked"
+
+
+def test_device_registration_is_blocked_during_transfer():
+    reset_state(role="A", cents=6000)
+    _state["status"] = "invoice-staged"
+    registry = FakeDeviceRegistry()
+
+    result = handle_device_register("AA:01", registry)
+
+    assert result["ok"] is False
+    assert result["retryable"] is False
+    assert "current transfer" in result["error"]
+    assert registry.address is None
+    assert registry.guard_result is False
+
+
+def test_send_usdt_requires_received_invoice_before_planning(tmp_path):
+    reset_state(role="A", cents=6000)
+    service = FakeWebService(tmp_path, role=BillRole.A)
+    empty = InventoryRegistry(
+        {
+            "direction": "empty",
+            "kind": None,
+            "denomination_cents": 0,
+        }
+    )
+
+    rejected = handle_send_usdt(500, service, empty)
+
+    assert rejected["ok"] is False
+    assert "no received invoice" in rejected["error"]
+    assert _state["pending"] is None
+
+
+def test_send_usdt_inventory_selects_invoice_read_and_confirmation(tmp_path):
+    reset_state(role="A", cents=6000)
+    service = FakeWebService(tmp_path, role=BillRole.A)
+    invoice = InventoryRegistry(
+        {
+            "direction": "to-dock",
+            "kind": int(FrameKind.INVOICE),
+            "denomination_cents": 500,
+        }
+    )
+
+    result = handle_send_usdt(500, service, invoice)
+
+    assert result["ok"] is True
+    assert result["pending"]["confirmation_phrase"] == "CONFIRM plan-123"
+
+
+def test_receive_usdt_empty_inventory_stages_invoice(tmp_path):
+    reset_state(role="B", cents=4000)
+    service = FakeWebService(tmp_path, role=BillRole.B)
+    empty = InventoryRegistry(
+        {
+            "direction": "empty",
+            "kind": None,
+            "denomination_cents": 0,
+        }
+    )
+
+    result = handle_receive_usdt(500, service, empty)
+
+    assert result["ok"] is True
+    assert result["receipt"]["action"] == "invoice-stage"
+
+
+def test_main_loads_registration_without_startup_ble_connect(monkeypatch):
+    class StartupRegistry:
+        timeout = 8.0
+
+        def snapshot(self):
+            return {
+                "device": {
+                    "address": "AA:01",
+                    "identity": "bill-saved",
+                }
+            }
+
+    class StartupService:
+        role = BillRole.A
+        asset_id = "rgb:usdt"
+        asset_precision = 6
+
+        def __init__(self):
+            self.closed = False
+
+        def spendable_cents(self):
+            return 5500
+
+        def close(self):
+            self.closed = True
+
+    class FakeServer:
+        def __init__(self, _binding, _handler):
+            self.closed = False
+
+        def serve_forever(self):
+            raise KeyboardInterrupt
+
+        def server_close(self):
+            self.closed = True
+
+    registry = StartupRegistry()
+    service = StartupService()
+    fake_server = FakeServer(None, None)
+    monkeypatch.setattr(
+        web_server.DeviceRegistry,
+        "from_env",
+        classmethod(lambda _cls, _role: registry),
+    )
+    monkeypatch.setattr(
+        web_server.RgbWebService,
+        "from_env",
+        classmethod(lambda _cls, *, gateway: service),
+    )
+    monkeypatch.setattr(
+        web_server,
+        "ThreadingHTTPServer",
+        lambda _binding, _handler: fake_server,
+    )
+
+    web_server.main()
+
+    assert _state["identity"] == "bill-saved"
+    assert service.closed is True
+    assert fake_server.closed is True
+
+
+def test_startup_429_message_does_not_echo_remote_html():
+    message = _startup_error_message(
+        RuntimeError("status: 429 <html>Too Many Requests</html>")
+    )
+
+    assert "HTTP 429" in message
+    assert "<html>" not in message

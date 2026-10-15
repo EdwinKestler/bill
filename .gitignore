@@ -12,6 +12,7 @@ __pycache__/
 .env
 .env.*
 !.env.example
+.dock-registration-*.json
 *.pem
 *.key
 mnemonics.txt

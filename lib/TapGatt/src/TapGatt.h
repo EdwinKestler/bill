@@ -24,7 +24,16 @@ class TapGatt {
     uint8_t kind = 0;
     uint32_t sessionId = 0;
     size_t size = 0;
+    uint32_t denominationCents = 0;
     char path[32] = {};
+  };
+
+  struct ArtifactState {
+    uint8_t direction = 0;  // 0 empty, 1 bill-to-peer, 2 bill-to-dock
+    uint8_t kind = 0;
+    uint32_t sessionId = 0;
+    size_t size = 0;
+    uint32_t denominationCents = 0;
   };
 
   TapGatt();
@@ -32,8 +41,9 @@ class TapGatt {
   void poll();
   bool canStageOutbound() const;
   bool stageOutbound(uint8_t kind, uint32_t sessionId, size_t size,
-                     const char* path);
+                     uint32_t denominationCents, const char* path);
   bool peekInboundTransfer(InboundTransfer& transfer);
+  bool artifactState(ArtifactState& state) const;
   void discardStaged();
   bool takeStatusUpdate(char* status, size_t statusSize);
 
@@ -82,6 +92,14 @@ class TapGatt {
   void queueReceiverAckLocked(const rgbbill::chunk::FrameView& frame,
                               rgbbill::chunk::Result result);
   void updateMetadataLocked();
+  bool persistArtifactMetadataLocked(const char* metadataPath, uint8_t kind,
+                                     uint32_t sessionId, size_t size,
+                                     uint32_t denominationCents);
+  bool restoreArtifactMetadataLocked(const char* metadataPath,
+                                     const char* artifactPath,
+                                     uint8_t& kind, uint32_t& sessionId,
+                                     size_t& size,
+                                     uint32_t& denominationCents);
   void setStatus(const char* status);
 
   BLEServer* server_ = nullptr;
@@ -93,6 +111,7 @@ class TapGatt {
   ClientCallbacks clientCallbacks_;
   mutable SemaphoreHandle_t mutex_ = nullptr;
   bool storageReady_ = false;
+  bool storageBlockedByOrphan_ = false;
 
   rgbbill::tap::Gate gate_;
   rgbbill::tap::OneShotArm receiverArm_;
@@ -117,6 +136,7 @@ class TapGatt {
   uint8_t inboundKind_ = 0;
   uint32_t inboundSessionId_ = 0;
   size_t inboundSize_ = 0;
+  uint32_t inboundDenominationCents_ = 0;
   uint32_t receiverLastFrameCrc_ = 0;
   bool receiverAckPending_ = false;
   uint8_t receiverAck_[rgbbill::chunk::MAX_FRAME_SIZE] = {};
@@ -126,6 +146,7 @@ class TapGatt {
   uint8_t outboundKind_ = 0;
   uint32_t outboundSessionId_ = 0;
   size_t outboundSize_ = 0;
+  uint32_t outboundDenominationCents_ = 0;
   File outboundFile_;
   bool outboundActive_ = false;
   bool outboundWaitingAck_ = false;

@@ -3,27 +3,29 @@ stateDiagram-v2
 
     [*] --> Idle
     Idle: idle
-    Idle: OLED amount and BLE READY
-    Tap: tap
-    Tap: one-shot receiver armed for 15 seconds
-    Pending: pending
-    Pending: invoice or consignment session active
-    Settled: settled
-    Settled: confirmed balances displayed
+    Idle: EMPTY and no amount
+    InvoiceOut: 5 dollars INVOICE TAP
+    InvoiceIn: 5 dollars INVOICE DOCK
+    ProofOut: 5 dollars PROOF TAP
+    ProofIn: 5 dollars PROOF DOCK
     Error: error
     Error: session cleared and operator informed
 
-    Idle --> Pending: diagnostic command implemented
-    Idle --> Tap: debounced press edge
-    Tap --> Pending: exact chunk run accepted locally
-    Tap --> Idle: 15 second timeout second press or connection failure
-    Pending --> Settled: valid consignment and one confirmation
-    Pending --> Error: CRC validation import or network failure
-    Pending --> Idle: session timeout or disconnect
-    Error --> Idle: clear session and resume advertising
-    Settled --> Idle: next dock session
+    Idle --> InvoiceOut: Dock B Receive USDT stages invoice
+    InvoiceOut --> Idle: successful tap send
+    Idle --> InvoiceIn: one-shot tap receives invoice
+    InvoiceIn --> Idle: Dock A Send USDT reads invoice
+    Idle --> ProofOut: confirmed send stages consignment
+    ProofOut --> Idle: successful tap send
+    Idle --> ProofIn: one-shot tap receives consignment
+    ProofIn --> Idle: Dock B Receive USDT reads proof
+    InvoiceOut --> Error: transfer failure keeps artifact
+    InvoiceIn --> Error: dock read failure keeps artifact
+    ProofOut --> Error: transfer failure keeps artifact
+    ProofIn --> Error: import failure persists dock copy
+    Error --> Idle: explicit recovery completes
 
-    note right of Pending
+    note right of ProofOut
         Human confirmation occurs on Dock A before broadcast.
         Ambiguous sends are audited and never retried automatically.
     end note

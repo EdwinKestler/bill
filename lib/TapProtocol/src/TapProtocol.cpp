@@ -33,13 +33,18 @@ bool encodeMetadata(const Metadata& metadata, uint8_t* output,
   output[3] = 0;
   writeLe32(output + 4, metadata.sessionId);
   writeLe32(output + 8, metadata.size);
+  writeLe32(output + 12, metadata.denominationCents);
   return true;
 }
 
 bool decodeMetadata(const uint8_t* encoded, size_t length,
                     Metadata& metadata) {
-  if (encoded == nullptr || length != METADATA_SIZE || encoded[0] != VERSION ||
-      encoded[3] != 0 || encoded[1] > 1) {
+  if (encoded == nullptr ||
+      (length != LEGACY_METADATA_SIZE && length != METADATA_SIZE) ||
+      (encoded[0] != LEGACY_VERSION && encoded[0] != VERSION) ||
+      (encoded[0] == LEGACY_VERSION && length != LEGACY_METADATA_SIZE) ||
+      (encoded[0] == VERSION && length != METADATA_SIZE) || encoded[3] != 0 ||
+      encoded[1] > 1) {
     return false;
   }
   metadata.version = encoded[0];
@@ -47,6 +52,8 @@ bool decodeMetadata(const uint8_t* encoded, size_t length,
   metadata.kind = encoded[2];
   metadata.sessionId = readLe32(encoded + 4);
   metadata.size = readLe32(encoded + 8);
+  metadata.denominationCents =
+      length == METADATA_SIZE ? readLe32(encoded + 12) : 0;
   return true;
 }
 

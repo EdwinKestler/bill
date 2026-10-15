@@ -57,7 +57,9 @@ class InvoiceTransferPlan:
 
 
 class ChunkGateway(Protocol):
-    def stage(self, kind: FrameKind, path: Path) -> int: ...
+    def stage(
+        self, kind: FrameKind, path: Path, denomination_cents: int = 0
+    ) -> int: ...
 
     def receive(self, kind: FrameKind, output: Path) -> tuple[int, int]: ...
 
@@ -71,7 +73,9 @@ class BillChunkGateway:
         self.address = address
         self.timeout = timeout
 
-    def stage(self, kind: FrameKind, path: Path) -> int:
+    def stage(
+        self, kind: FrameKind, path: Path, denomination_cents: int = 0
+    ) -> int:
         session_id, _echoed = asyncio.run(
             send_chunk_file(
                 self.timeout,
@@ -79,6 +83,7 @@ class BillChunkGateway:
                 kind,
                 path,
                 echo=False,
+                denomination_cents=denomination_cents,
             )
         )
         return session_id
@@ -184,18 +189,22 @@ class TapWalletFlow:
         )
         return intent, artifact
 
-    def stage_artifact(self, artifact: StoredArtifact) -> StagedArtifact:
-        session_id = self.gateway.stage(artifact.kind, artifact.path)
+    def stage_artifact(
+        self, artifact: StoredArtifact, denomination_cents: int = 0
+    ) -> StagedArtifact:
+        session_id = self.gateway.stage(
+            artifact.kind, artifact.path, denomination_cents
+        )
         return StagedArtifact(artifact, session_id)
 
     def create_and_stage_invoice(
-        self, *, asset_id: str, expires_in_seconds: int
+        self, *, asset_id: str, expires_in_seconds: int, denomination_cents: int = 0
     ) -> StagedInvoice:
         intent, artifact = self.create_invoice_artifact(
             asset_id=asset_id,
             expires_in_seconds=expires_in_seconds,
         )
-        staged = self.stage_artifact(artifact)
+        staged = self.stage_artifact(artifact, denomination_cents)
         return StagedInvoice(intent, staged)
 
     def receive_and_plan_invoice(
@@ -234,11 +243,13 @@ class TapWalletFlow:
     def execute_confirmed_transfer(self, plan_id: str) -> ConsignmentArtifact:
         return self.adapter.execute_confirmed_transfer(plan_id)
 
-    def stage_consignment(self, artifact: ConsignmentArtifact) -> StagedArtifact:
+    def stage_consignment(
+        self, artifact: ConsignmentArtifact, denomination_cents: int = 0
+    ) -> StagedArtifact:
         stored = self.store.load(FrameKind.CONSIGNMENT, artifact.path)
         if stored.size != artifact.size or stored.sha256 != artifact.sha256:
             raise TapFlowError("generated consignment changed before BLE staging")
-        return self.stage_artifact(stored)
+        return self.stage_artifact(stored, denomination_cents)
 
     def receive_consignment(self) -> ReceivedArtifact:
         incoming = self.store.incoming_path(FrameKind.CONSIGNMENT)

@@ -38,7 +38,8 @@ void loop() {
     DockGatt::InboundTransfer transfer;
     if (dockGatt.moveInboundTransfer(transfer, TapGatt::OUTBOUND_PATH) &&
         !tapGatt.stageOutbound(transfer.kind, transfer.sessionId,
-                               transfer.size, transfer.path)) {
+                               transfer.size, transfer.denominationCents,
+                               transfer.path)) {
       Serial.println("bill: tap handoff failed after dock artifact move");
     }
   }
@@ -47,6 +48,13 @@ void loop() {
   if (tapGatt.peekInboundTransfer(tapped)) {
     dockGatt.queueOutboundTransfer(tapped.kind, tapped.sessionId, tapped.path,
                                    true);
+  }
+
+  TapGatt::ArtifactState artifact;
+  if (tapGatt.artifactState(artifact)) {
+    dockGatt.setArtifactState(
+        artifact.direction, artifact.kind, artifact.sessionId, artifact.size,
+        artifact.denominationCents);
   }
 
   uint32_t cents = 0;

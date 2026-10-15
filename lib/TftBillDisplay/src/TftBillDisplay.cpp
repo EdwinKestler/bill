@@ -55,15 +55,17 @@ void TftBillDisplay::showAmount(uint32_t cents, const char* status) {
   display_.setCursor(82, 28);
   display_.print("RGB BILL");
 
-  int16_t x1 = 0;
-  int16_t y1 = 0;
-  uint16_t width = 0;
-  uint16_t height = 0;
-  display_.setTextColor(ILI9341_WHITE, ILI9341_BLACK);
-  display_.setTextSize(6);
-  display_.getTextBounds(amount, 0, 0, &x1, &y1, &width, &height);
-  display_.setCursor((display_.width() - width) / 2, 92);
-  display_.print(amount);
+  if (cents > 0) {
+    int16_t x1 = 0;
+    int16_t y1 = 0;
+    uint16_t width = 0;
+    uint16_t height = 0;
+    display_.setTextColor(ILI9341_WHITE, ILI9341_BLACK);
+    display_.setTextSize(6);
+    display_.getTextBounds(amount, 0, 0, &x1, &y1, &width, &height);
+    display_.setCursor((display_.width() - width) / 2, 92);
+    display_.print(amount);
+  }
 
   display_.fillRect(5, 186, display_.width() - 10, 48, ILI9341_NAVY);
   display_.setTextColor(ILI9341_YELLOW, ILI9341_NAVY);

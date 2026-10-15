@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "contract_revision": "2026-10-11",
-  "status": "dock-core-v1-frozen+chunk-v1+tap-v1-physical-accepted",
+  "contract_revision": "2026-10-15",
+  "status": "dock-core-v1+artifact-inventory-v1+chunk-v1+tap-v2-build-verified",
   "device_name": "RgbBill",
   "services": {
     "dock": {
@@ -30,8 +30,9 @@
           "operations": ["write-with-response"],
           "encoding": "utf-8-command-v1",
           "commands": [
-            "diag:display:500:pending",
+            "diag:display:empty",
             "diag:chunk:echo",
+            "artifact:prepare:<kind>:<denomination_cents>",
             "chunk:discard"
           ]
         },
@@ -52,6 +53,21 @@
           "default_payload_bytes": 180,
           "max_transfer_bytes": 655360,
           "implemented": true
+        },
+        "artifact_meta": {
+          "uuid": "7c3e9a10-4b1e-4c8f-9d2a-00b111d0c008",
+          "operations": ["read"],
+          "encoding": "artifact-inventory-v1-little-endian",
+          "bytes": 16,
+          "layout": {
+            "0": "version=1",
+            "1": "direction: 0 empty, 1 bill-to-peer, 2 bill-to-dock",
+            "2": "kind: 0 empty, 1 invoice, 2 consignment",
+            "3": "reserved=0",
+            "4..7": "session_id uint32",
+            "8..11": "size uint32",
+            "12..15": "denomination_cents uint32"
+          }
         }
       }
     },
@@ -75,8 +91,10 @@
         "meta": {
           "uuid": "7c3e9a10-4b1e-4c8f-9d2a-00b1117a0003",
           "operations": ["read"],
-          "encoding": "tap-metadata-v1-little-endian",
-          "bytes": 12
+          "encoding": "tap-metadata-v2-little-endian",
+          "bytes": 16,
+          "legacy_decode_bytes": 12,
+          "appended_field": "denomination_cents uint32 little-endian"
         },
         "control": {
           "uuid": "7c3e9a10-4b1e-4c8f-9d2a-00b1117a0004",
@@ -97,8 +115,9 @@
       },
       "max_transfer_bytes": 655360,
       "implemented": true,
-      "physical_acceptance": true,
-      "physical_acceptance_evidence": {
+      "physical_acceptance": false,
+      "build_verified": true,
+      "previous_v1_physical_acceptance_evidence": {
         "date": "2026-10-11",
         "fixture_bytes": 520,
         "sha256": "925a4bf7cdf591eea7e5b78975964aee5801417761474fe3588b385ba00bc014",

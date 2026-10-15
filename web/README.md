@@ -27,9 +27,32 @@ stage-only retry that cannot send again. Import failure similarly retains and
 reuses the received artifact. See
 [WEB-RGB-TEST.md](../docs/WEB-RGB-TEST.md) for the two-dock procedure.
 
+## Physical bill registration
+
+Each role-specific dock page has **Scan**, **Connect**, and **Register
+selected** controls. Scan lists only advertisements carrying the frozen
+RgbBill dock service UUID and an RgbBill-family name. Connect performs a
+read-only `IDENTITY` / `STATUS` / `DENOMINATION` / `ARTIFACT_META` check.
+Register repeats that check and atomically stores one selection in the ignored role file
+`.dock-registration-a.json` or `.dock-registration-b.json` with mode `0600`.
+
+The saved address is resolved immediately before every BLE operation, so the
+dock reconnects on demand after restarts; startup never waits for the radio
+and does not keep a permanent BLE connection open. `BLE_DEVICE_ADDRESS`
+remains a migration fallback until a browser selection is registered.
+Registration is rejected while a transfer, confirmation, or recovery boundary
+is active. There is currently no web-user account layer: “one per user” means
+one physical bill per role-specific dock process.
+
+The primary UI is deliberately state-driven: role A exposes **Send USDT** and
+role B exposes **Receive USDT**. Each action inventories the registered bill
+before choosing a BLE direction. Text commands remain under an Advanced
+disclosure for diagnostics and recovery, not as the normal human procedure.
+
 | Path | Job |
 | --- | --- |
 | `server.py` | HTTP: static files + JSON API |
+| `device_registry.py` | Strict BLE discovery, read-only verification, one saved bill |
 | `static/` | Desk UI (denomination, status, confirm) |
 | `rgb_web.py` | Long-lived role wallet + exact-artifact recovery boundaries |
 | `rgb/` | Isolated rgb-lib-python adapter and safe config check |

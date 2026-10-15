@@ -68,7 +68,7 @@ def _stage_invoice(args: argparse.Namespace, flow: TapWalletFlow) -> None:
         artifact_bytes=artifact.size,
         artifact_sha256=artifact.sha256,
     )
-    staged = flow.stage_artifact(artifact)
+    staged = flow.stage_artifact(artifact, args.denomination_cents)
     _record(
         "invoice-staged",
         ble_address=args.address,
@@ -129,7 +129,7 @@ def _send_from_tap(args: argparse.Namespace, flow: TapWalletFlow) -> None:
         warning="do not repeat the send if BLE staging fails",
     )
     try:
-        staged = flow.stage_consignment(consignment)
+        staged = flow.stage_consignment(consignment, args.denomination_cents)
     except Exception as exc:
         recovery = shlex.join(
             [
@@ -143,6 +143,8 @@ def _send_from_tap(args: argparse.Namespace, flow: TapWalletFlow) -> None:
                 "consignment",
                 "--input",
                 str(consignment.path),
+                "--denomination-cents",
+                str(args.denomination_cents),
             ]
         )
         _record(
@@ -218,6 +220,7 @@ def main() -> None:
     add_ble_arguments(stage_invoice)
     stage_invoice.add_argument("--asset-id", required=True)
     stage_invoice.add_argument("--expires-seconds", type=int, default=3600)
+    stage_invoice.add_argument("--denomination-cents", type=int, default=500)
 
     send = subparsers.add_parser(
         "send-from-tap",
@@ -226,6 +229,7 @@ def main() -> None:
     add_ble_arguments(send)
     send.add_argument("--asset-id", required=True)
     send.add_argument("--amount", type=int)
+    send.add_argument("--denomination-cents", type=int, default=500)
     send.add_argument("--expires-seconds", type=int, default=900)
     send.add_argument(
         "--invoice-file",

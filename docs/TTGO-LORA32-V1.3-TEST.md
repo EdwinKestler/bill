@@ -143,11 +143,11 @@ For the combined BLE-to-OLED test, write this UTF-8 string with response to
 `...c005`:
 
 ```text
-diag:display:500:pending
+diag:display:empty
 ```
 
-The OLED must change to `$5.00 / PENDING`; `...c003` must read `pending` and
-`...c004` must read `500`. Disconnect and reconnect twice to verify that BLE
+The display must change to `DISPLAY TEST` without a numeric amount;
+`...c003` must read `idle` and `...c004` must read `0`. Disconnect and reconnect twice to verify that BLE
 advertising resumes without pressing RESET.
 
 The dock client can run the same test after selecting the TTGO's BLE address:

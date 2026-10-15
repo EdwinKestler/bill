@@ -18,6 +18,7 @@ class DockGatt {
     uint8_t kind = 0;
     uint32_t sessionId = 0;
     size_t size = 0;
+    uint32_t denominationCents = 0;
     char path[32] = {};
   };
 
@@ -32,6 +33,8 @@ class DockGatt {
   bool takeTapDiscardRequest();
   bool queueOutboundTransfer(uint8_t kind, uint32_t sessionId,
                              const char* path, bool removeAfterSend = false);
+  void setArtifactState(uint8_t direction, uint8_t kind, uint32_t sessionId,
+                        size_t size, uint32_t denominationCents);
 
  private:
   class ServerCallbacks : public BLEServerCallbacks {
@@ -78,6 +81,7 @@ class DockGatt {
   BLEServer* server_ = nullptr;
   BLECharacteristic* statusCharacteristic_ = nullptr;
   BLECharacteristic* denominationCharacteristic_ = nullptr;
+  BLECharacteristic* artifactMetaCharacteristic_ = nullptr;
   BLECharacteristic* chunkOutCharacteristic_ = nullptr;
   BLE2902* chunkOutCccd_ = nullptr;
   ServerCallbacks callbacks_;
@@ -86,6 +90,7 @@ class DockGatt {
 
   SemaphoreHandle_t chunkMutex_ = nullptr;
   bool storageReady_ = false;
+  bool storageBlockedByOrphan_ = false;
   bool connected_ = false;
   bool advertisingRestartPending_ = false;
   uint32_t advertisingRestartRequestedAtMs_ = 0;
@@ -95,10 +100,13 @@ class DockGatt {
   uint8_t inboundKind_ = 0;
   uint32_t inboundSessionId_ = 0;
   size_t inboundSize_ = 0;
+  uint32_t inboundDenominationCents_ = 0;
   uint32_t inboundLastActivityMs_ = 0;
   uint32_t inboundLastFrameCrc_ = 0;
   bool echoNextTransfer_ = false;
   bool tapDiscardRequested_ = false;
+  uint8_t preparedKind_ = 0;
+  uint32_t preparedDenominationCents_ = 0;
 
   bool ackPending_ = false;
   uint8_t ackEncoded_[rgbbill::chunk::MAX_FRAME_SIZE] = {};
@@ -122,4 +130,9 @@ class DockGatt {
   uint32_t displayCents_ = 0;
   char displayStatus_[16] = {};
   bool displayDirty_ = false;
+  uint8_t artifactDirection_ = 0xFF;
+  uint8_t artifactKind_ = 0;
+  uint32_t artifactSessionId_ = 0;
+  size_t artifactSize_ = 0;
+  uint32_t artifactDenominationCents_ = 0;
 };

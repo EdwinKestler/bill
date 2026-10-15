@@ -5,6 +5,7 @@
 #include <BLEDevice.h>
 #include <BLEUtils.h>
 #include <SPIFFS.h>
+#include <TapProtocol.h>
 #include <cstring>
 
 #include "config.h"
@@ -12,10 +13,11 @@
 namespace {
 constexpr char CHUNK_PART_PATH[] = "/chunk-in.part";
 constexpr char CHUNK_READY_PATH[] = "/chunk-in.ready";
+constexpr char CHUNK_META_PATH[] = "/chunk-in.meta";
 // Bluedroid's createService default is 15 handles. This service needs at
 // least 16: one service, six characteristic declaration/value pairs, and
 // three CCCDs. Reserve a little headroom so CHUNK_OUT always gets its CCCD.
-constexpr uint16_t DOCK_SERVICE_HANDLES = 20;
+constexpr uint16_t DOCK_SERVICE_HANDLES = 22;
 // Leave headroom for SPIFFS metadata and garbage collection in the 896 KiB
 // partition instead of treating every partition byte as payload capacity.
 constexpr size_t MAX_TRANSFER_BYTES = 640U * 1024U;
@@ -37,6 +39,13 @@ uint32_t readLe32(const uint8_t* input) {
          (static_cast<uint32_t>(input[1]) << 8U) |
          (static_cast<uint32_t>(input[2]) << 16U) |
          (static_cast<uint32_t>(input[3]) << 24U);
+}
+
+void writeLe32(uint8_t* output, uint32_t value) {
+  output[0] = static_cast<uint8_t>(value & 0xFFU);
+  output[1] = static_cast<uint8_t>((value >> 8U) & 0xFFU);
+  output[2] = static_cast<uint8_t>((value >> 16U) & 0xFFU);
+  output[3] = static_cast<uint8_t>((value >> 24U) & 0xFFU);
 }
 }  // namespace
 
@@ -71,6 +80,42 @@ void DockGatt::begin() {
   storageReady_ = SPIFFS.begin(true);
   if (!storageReady_) {
     Serial.println("bill: SPIFFS unavailable; chunk transfers disabled");
+  }
+  if (storageReady_ && SPIFFS.exists(CHUNK_READY_PATH) &&
+      SPIFFS.exists(CHUNK_META_PATH)) {
+    File metadataFile = SPIFFS.open(CHUNK_META_PATH, FILE_READ);
+    File artifactFile = SPIFFS.open(CHUNK_READY_PATH, FILE_READ);
+    uint8_t encoded[rgbbill::tap::METADATA_SIZE] = {};
+    rgbbill::tap::Metadata metadata;
+    const bool restored = metadataFile && artifactFile &&
+        metadataFile.read(encoded, sizeof(encoded)) == sizeof(encoded) &&
+        rgbbill::tap::decodeMetadata(encoded, sizeof(encoded), metadata) &&
+        metadata.state == rgbbill::tap::ReadyState::kReady &&
+        metadata.size == artifactFile.size() &&
+        (metadata.kind == static_cast<uint8_t>(rgbbill::chunk::Kind::kInvoice) ||
+         metadata.kind ==
+             static_cast<uint8_t>(rgbbill::chunk::Kind::kConsignment));
+    if (metadataFile) metadataFile.close();
+    if (artifactFile) artifactFile.close();
+    if (restored) {
+      inboundReady_ = true;
+      inboundKind_ = metadata.kind;
+      inboundSessionId_ = metadata.sessionId;
+      inboundSize_ = metadata.size;
+      inboundDenominationCents_ = metadata.denominationCents;
+      Serial.printf("bill: restored dock artifact kind=%u session=%08lx bytes=%u\n",
+                    inboundKind_,
+                    static_cast<unsigned long>(inboundSessionId_),
+                    static_cast<unsigned>(inboundSize_));
+    } else {
+      SPIFFS.remove(CHUNK_META_PATH);
+      storageBlockedByOrphan_ = true;
+      storageReady_ = false;
+      Serial.println(
+          "bill: orphaned dock artifact blocks transfers; use chunk:discard explicitly");
+    }
+  } else if (storageReady_ && SPIFFS.exists(CHUNK_META_PATH)) {
+    SPIFFS.remove(CHUNK_META_PATH);
   }
 
   BLEDevice::init(BLE_DEVICE_NAME);
@@ -108,6 +153,11 @@ void DockGatt::begin() {
       BLE_UUIDs::CHUNK_OUT, BLECharacteristic::PROPERTY_NOTIFY);
   chunkOutCccd_ = new BLE2902();
   chunkOutCharacteristic_->addDescriptor(chunkOutCccd_);
+
+  artifactMetaCharacteristic_ = service->createCharacteristic(
+      BLE_UUIDs::ARTIFACT_META, BLECharacteristic::PROPERTY_READ);
+  uint8_t emptyArtifact[16] = {1};
+  artifactMetaCharacteristic_->setValue(emptyArtifact, sizeof(emptyArtifact));
 
   service->start();
 
@@ -245,6 +295,8 @@ void DockGatt::handleDisconnect(BLEServer* server) {
     if (inboundSession_.active() && !inboundSession_.complete()) {
       resetInboundLocked(false);
     }
+    preparedKind_ = 0;
+    preparedDenominationCents_ = 0;
     if (outboundActive_) {
       finishOutboundLocked(false);
     }
@@ -256,9 +308,28 @@ void DockGatt::handleDisconnect(BLEServer* server) {
 }
 
 void DockGatt::handleCommand(const std::string& command) {
-  if (command == "diag:display:500:pending") {
-    setState(500, "pending", "PENDING");
-    Serial.println("bill: diagnostic display set to $5.00 / PENDING");
+  unsigned preparedKind = 0;
+  unsigned long preparedCents = 0;
+  if (sscanf(command.c_str(), "artifact:prepare:%u:%lu", &preparedKind,
+             &preparedCents) == 2 &&
+      (preparedKind == static_cast<unsigned>(rgbbill::chunk::Kind::kInvoice) ||
+       preparedKind ==
+           static_cast<unsigned>(rgbbill::chunk::Kind::kConsignment)) &&
+      preparedCents > 0) {
+    if (chunkMutex_ != nullptr &&
+        xSemaphoreTake(chunkMutex_, portMAX_DELAY) == pdTRUE) {
+      preparedKind_ = static_cast<uint8_t>(preparedKind);
+      preparedDenominationCents_ = static_cast<uint32_t>(preparedCents);
+      xSemaphoreGive(chunkMutex_);
+    }
+    Serial.printf("bill: prepared artifact kind=%u denomination=%lu cents\n",
+                  preparedKind, preparedCents);
+    return;
+  }
+
+  if (command == "diag:display:empty") {
+    setState(0, "idle", "DISPLAY TEST");
+    Serial.println("bill: diagnostic display set without an amount");
     return;
   }
 
@@ -283,7 +354,13 @@ void DockGatt::handleCommand(const std::string& command) {
         finishOutboundLocked(false);
       }
       resetInboundLocked(true);
+      if (storageBlockedByOrphan_) {
+        storageBlockedByOrphan_ = false;
+        storageReady_ = true;
+      }
       echoNextTransfer_ = false;
+      preparedKind_ = 0;
+      preparedDenominationCents_ = 0;
       tapDiscardRequested_ = true;
       xSemaphoreGive(chunkMutex_);
     }
@@ -347,6 +424,10 @@ void DockGatt::handleChunk(const std::string& encoded) {
       result = inboundSession_.accept(frame);
       if (result == rgbbill::chunk::Result::kOk) {
         if (frame.sequence == 0) {
+          inboundDenominationCents_ =
+              preparedKind_ == static_cast<uint8_t>(frame.kind)
+                  ? preparedDenominationCents_
+                  : 0;
           SPIFFS.remove(CHUNK_PART_PATH);
           inboundFile_ = SPIFFS.open(CHUNK_PART_PATH, FILE_WRITE);
         }
@@ -366,10 +447,39 @@ void DockGatt::handleChunk(const std::string& encoded) {
               result = rgbbill::chunk::Result::kStorageFailure;
               resetInboundLocked(false);
             } else {
+              rgbbill::tap::Metadata metadata;
+              metadata.state = rgbbill::tap::ReadyState::kReady;
+              metadata.kind = static_cast<uint8_t>(frame.kind);
+              metadata.sessionId = frame.sessionId;
+              metadata.size = inboundSession_.bytesReceived();
+              metadata.denominationCents = inboundDenominationCents_;
+              uint8_t metadataEncoded[rgbbill::tap::METADATA_SIZE] = {};
+              SPIFFS.remove(CHUNK_META_PATH);
+              File metadataFile = SPIFFS.open(CHUNK_META_PATH, FILE_WRITE);
+              const bool metadataStored = metadataFile &&
+                  rgbbill::tap::encodeMetadata(
+                      metadata, metadataEncoded, sizeof(metadataEncoded)) &&
+                  metadataFile.write(metadataEncoded, sizeof(metadataEncoded)) ==
+                      sizeof(metadataEncoded);
+              if (metadataFile) {
+                metadataFile.flush();
+                metadataFile.close();
+              }
+              if (!metadataStored) {
+                SPIFFS.remove(CHUNK_META_PATH);
+                SPIFFS.remove(CHUNK_READY_PATH);
+                result = rgbbill::chunk::Result::kStorageFailure;
+                resetInboundLocked(false);
+                xSemaphoreGive(chunkMutex_);
+                queueAck(frame.sessionId, frame.sequence, frame.total, result);
+                return;
+              }
               inboundReady_ = true;
               inboundKind_ = static_cast<uint8_t>(frame.kind);
               inboundSessionId_ = frame.sessionId;
               inboundSize_ = inboundSession_.bytesReceived();
+              preparedKind_ = 0;
+              preparedDenominationCents_ = 0;
               Serial.printf(
                   "bill: chunk transfer complete kind=%u session=%08lx bytes=%u\n",
                   inboundKind_, static_cast<unsigned long>(inboundSessionId_),
@@ -496,9 +606,11 @@ void DockGatt::finishOutboundLocked(bool success) {
   if (removeFile) {
     SPIFFS.remove(outboundPath_);
     if (strcmp(outboundPath_, CHUNK_READY_PATH) == 0) {
+      SPIFFS.remove(CHUNK_META_PATH);
       inboundReady_ = false;
       inboundSession_.reset();
       inboundSize_ = 0;
+      inboundDenominationCents_ = 0;
     }
   }
   Serial.printf("bill: outbound chunk transfer %s\n",
@@ -518,8 +630,12 @@ void DockGatt::resetInboundLocked(bool removeReady) {
   inboundSession_.reset();
   inboundLastActivityMs_ = 0;
   inboundLastFrameCrc_ = 0;
+  if (!inboundReady_) {
+    inboundDenominationCents_ = 0;
+  }
   if (removeReady) {
     SPIFFS.remove(CHUNK_READY_PATH);
+    SPIFFS.remove(CHUNK_META_PATH);
     inboundReady_ = false;
     inboundKind_ = 0;
     inboundSessionId_ = 0;
@@ -541,6 +657,7 @@ bool DockGatt::takeInboundTransfer(InboundTransfer& transfer) {
   transfer.kind = inboundKind_;
   transfer.sessionId = inboundSessionId_;
   transfer.size = inboundSize_;
+  transfer.denominationCents = inboundDenominationCents_;
   strncpy(transfer.path, CHUNK_READY_PATH, sizeof(transfer.path) - 1);
   transfer.path[sizeof(transfer.path) - 1] = '\0';
   inboundReady_ = false;
@@ -566,10 +683,12 @@ bool DockGatt::moveInboundTransfer(InboundTransfer& transfer,
     xSemaphoreGive(chunkMutex_);
     return false;
   }
+  SPIFFS.remove(CHUNK_META_PATH);
 
   transfer.kind = inboundKind_;
   transfer.sessionId = inboundSessionId_;
   transfer.size = inboundSize_;
+  transfer.denominationCents = inboundDenominationCents_;
   strncpy(transfer.path, destination, sizeof(transfer.path) - 1);
   transfer.path[sizeof(transfer.path) - 1] = '\0';
   inboundReady_ = false;
@@ -577,8 +696,41 @@ bool DockGatt::moveInboundTransfer(InboundTransfer& transfer,
   inboundKind_ = 0;
   inboundSessionId_ = 0;
   inboundSize_ = 0;
+  inboundDenominationCents_ = 0;
   xSemaphoreGive(chunkMutex_);
   return true;
+}
+
+void DockGatt::setArtifactState(uint8_t direction, uint8_t kind,
+                                uint32_t sessionId, size_t size,
+                                uint32_t denominationCents) {
+  if (artifactMetaCharacteristic_ == nullptr || direction > 2 || kind > 2) {
+    return;
+  }
+  if (direction == artifactDirection_ && kind == artifactKind_ &&
+      sessionId == artifactSessionId_ && size == artifactSize_ &&
+      denominationCents == artifactDenominationCents_) {
+    return;
+  }
+  artifactDirection_ = direction;
+  artifactKind_ = kind;
+  artifactSessionId_ = sessionId;
+  artifactSize_ = size;
+  artifactDenominationCents_ = denominationCents;
+
+  uint8_t encoded[16] = {1, direction, kind, 0};
+  writeLe32(encoded + 4, sessionId);
+  writeLe32(encoded + 8, static_cast<uint32_t>(size));
+  writeLe32(encoded + 12, denominationCents);
+  artifactMetaCharacteristic_->setValue(encoded, sizeof(encoded));
+
+  const char* status = direction == 0 ? "idle" : direction == 1 ? "tap" : "pending";
+  const char* display = "EMPTY";
+  if (direction == 1 && kind == 1) display = "INVOICE TAP";
+  if (direction == 2 && kind == 1) display = "INVOICE DOCK";
+  if (direction == 1 && kind == 2) display = "PROOF TAP";
+  if (direction == 2 && kind == 2) display = "PROOF DOCK";
+  setState(direction == 0 ? 0 : denominationCents, status, display);
 }
 
 bool DockGatt::takeTapDiscardRequest() {
