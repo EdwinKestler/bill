@@ -44,7 +44,7 @@ def test_all_frozen_dock_core_uuids_match():
 
     assert (
         contract["status"]
-        == "dock-core-v1+artifact-inventory-v1+chunk-v1+tap-v2-build-verified"
+        == "dock-core-v1+artifact-inventory-v2+chunk-v1+tap-v2-build-verified"
     )
     for suffix in suffixes:
         uuid = f"7c3e9a10-4b1e-4c8f-9d2a-00b111d0c00{suffix}"
@@ -61,6 +61,10 @@ def test_all_frozen_dock_core_uuids_match():
     ]
     assert characteristics["chunk_in"]["implemented"] is True
     assert characteristics["chunk_out"]["implemented"] is True
+    assert characteristics["artifact_meta"]["encoding"] == (
+        "artifact-inventory-v2-little-endian"
+    )
+    assert "3 recovery-blocked" in characteristics["artifact_meta"]["layout"]["1"]
     assert characteristics["chunk_in"]["max_transfer_bytes"] == 640 * 1024
     assert contract["chunk_v1"]["ack_status"]["accepted"] == 0
     assert contract["chunk_v1"]["ack_status"]["busy"] == 9
@@ -118,7 +122,7 @@ def test_tap_v1_uuids_and_gate_match_firmware():
         == "GPIO12 active-high momentary TTP223 digital touch"
     )
     assert (
-        tap["gate"]["input"]["ttgo_tft"]
+        tap["gate"]["input"]["ttgo_oled"]
         == "GPIO12 active-high momentary TTP223 digital touch"
     )
     wemos_hardware = config.split(

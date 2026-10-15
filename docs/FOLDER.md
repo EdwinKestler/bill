@@ -27,7 +27,7 @@ ideas/bill/                 this project (git + PlatformIO root)
   src/ttgo_lora32_test.cpp  TTGO V1.3 display + BLE diagnostic entry
   src/ttgo_oled_reference.cpp  LilyGO ThingPulse OLED-only comparison
   lib/BillDisplay/          shared SSD1306 driver for main + OLED test
-  lib/TftBillDisplay/       isolated TTGO external ILI9341 SPI driver
+  lib/TftBillDisplay/       legacy TTGO external ILI9341 rollback driver
   lib/ChunkProtocol/        portable frame codec + receive-session FSM
   lib/DockGatt/             BLE peripheral + SPIFFS staging + ACK sender
   lib/                      BillDisplay and implemented dock transport; TapGatt next

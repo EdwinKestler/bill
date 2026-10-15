@@ -17,14 +17,12 @@ flowchart TB
     end
 
     subgraph ttgo["Bill B TTGO LoRa32 V1.3"]
-        boardB["ESP32 | 4 MB flash | LoRa disabled"]:::board
-        tft["ILI9341 TFT | SCK18 MOSI23 DC2 RST4 CS15"]:::planned
-        touch["TTP223 digital touch | GPIO12 active high | release at reset"]:::planned
-        backlight["Backlight LED | 3V3 or transistor | not GPIO sourced"]:::storage
+        boardB["ESP32 | 4 MB flash | LoRa unused"]:::board
+        oledB["External SSD1306 OLED | 128 by 64 | SDA21 SCL22 | no reset"]:::peripheral
+        touch["TTP223 digital touch | GPIO12 active high | release at reset"]:::peripheral
         usbB["CP2102 USB UART | stable by-id path"]:::peripheral
-        boardB --> tft
+        boardB --> oledB
         boardB --> touch
-        backlight --> tft
         usbB --> boardB
     end
 

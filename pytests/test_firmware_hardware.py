@@ -57,7 +57,51 @@ def test_ttgo_lora32_v13_has_isolated_oled_ble_environment():
     assert '#include <DockGatt.h>' in ttgo_test
 
 
-def test_ttgo_external_ili9341_and_touch_profile_is_isolated():
+def test_ttgo_external_oled_and_touch_profile_is_active():
+    platformio = (ROOT / "platformio.ini").read_text(encoding="utf-8")
+    config = (ROOT / "include" / "config.h").read_text(encoding="utf-8")
+    ttgo_test = (ROOT / "src" / "ttgo_lora32_test.cpp").read_text(
+        encoding="utf-8"
+    )
+
+    assert "[env:ttgo-lora32-oled-test]" in platformio
+    assert "RGB_BILL_TTGO_EXTERNAL_OLED=1" in platformio
+    assert "Adafruit SSD1306@^2.5.17" in platformio
+    assert "TAP_BUTTON_PIN = 12" in config
+    assert "TAP_BUTTON_ACTIVE_LEVEL = HIGH" in config
+    assert 'TAP_INPUT_NAME[] = "TTP223"' in config
+    assert "defined(RGB_BILL_TTGO_EXTERNAL_OLED)" in config
+    assert "OLED_SDA_PIN = 21" in config
+    assert "OLED_SCL_PIN = 22" in config
+    assert "OLED_RESET_PIN = -1" in config
+    assert "OLED_I2C_CLOCK_HZ = 100000" in config
+    assert '#include <BillDisplay.h>' in ttgo_test
+    assert "touch GPIO=%u active=%s input=%s" in ttgo_test
+    assert "dockGatt.peekInboundTransfer(retained)" in ttgo_test
+
+
+def test_blocked_dock_artifact_is_never_reported_empty():
+    main = (ROOT / "src" / "main.cpp").read_text(encoding="utf-8")
+    dock_header = (
+        ROOT / "lib" / "DockGatt" / "src" / "DockGatt.h"
+    ).read_text(encoding="utf-8")
+    dock_source = (
+        ROOT / "lib" / "DockGatt" / "src" / "DockGatt.cpp"
+    ).read_text(encoding="utf-8")
+    tap_source = (
+        ROOT / "lib" / "TapGatt" / "src" / "TapGatt.cpp"
+    ).read_text(encoding="utf-8")
+
+    assert "peekInboundTransfer(InboundTransfer& transfer) const" in dock_header
+    assert "dockGatt.peekInboundTransfer(retained)" in main
+    assert "dockGatt.setArtifactState(3" in main
+    assert "uint8_t encoded[16] = {2, direction, kind, 0}" in dock_source
+    assert "storageBlockedByOrphan_" in tap_source
+    assert 'state.direction = 3' in tap_source
+    assert 'tap: input ignored; storage recovery required' in tap_source
+
+
+def test_ttgo_external_ili9341_profile_remains_legacy_rollback():
     platformio = (ROOT / "platformio.ini").read_text(encoding="utf-8")
     config = (ROOT / "include" / "config.h").read_text(encoding="utf-8")
     ttgo_test = (ROOT / "src" / "ttgo_lora32_test.cpp").read_text(
@@ -67,12 +111,9 @@ def test_ttgo_external_ili9341_and_touch_profile_is_isolated():
         ROOT / "lib" / "TftBillDisplay" / "src" / "TftBillDisplay.cpp"
     ).read_text(encoding="utf-8")
 
-    assert "[env:ttgo-lora32-tft-test]" in platformio
+    assert "[env:ttgo-lora32-tft-legacy]" in platformio
     assert "RGB_BILL_TTGO_TFT_ILI9341=1" in platformio
     assert "Adafruit ILI9341@^1.6.2" in platformio
-    assert "TAP_BUTTON_PIN = 12" in config
-    assert "TAP_BUTTON_ACTIVE_LEVEL = HIGH" in config
-    assert 'TAP_INPUT_NAME[] = "TTP223"' in config
     assert "TFT_BACKLIGHT_PIN = 32" in config
     assert "TFT_SCK_PIN = 18" in config
     assert "TFT_MOSI_PIN = 23" in config

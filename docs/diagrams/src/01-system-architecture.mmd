@@ -28,7 +28,7 @@ flowchart LR
 
     subgraph billBZone["Bill B hardware"]
         dockGattB["DockGatt peripheral"]:::implemented
-        oledB["External ILI9341 TFT and GPIO12 TTP223 touch"]:::planned
+        oledB["External SSD1306 OLED SDA21 SCL22 and GPIO12 TTP223"]:::implemented
         tapGattB["TapGatt staged sender or gated receiver"]:::implemented
         dockGattB --> oledB
     end

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "contract_revision": "2026-10-15",
-  "status": "dock-core-v1+artifact-inventory-v1+chunk-v1+tap-v2-build-verified",
+  "status": "dock-core-v1+artifact-inventory-v2+chunk-v1+tap-v2-build-verified",
   "device_name": "RgbBill",
   "services": {
     "dock": {
@@ -57,11 +57,12 @@
         "artifact_meta": {
           "uuid": "7c3e9a10-4b1e-4c8f-9d2a-00b111d0c008",
           "operations": ["read"],
-          "encoding": "artifact-inventory-v1-little-endian",
+          "encoding": "artifact-inventory-v2-little-endian",
           "bytes": 16,
+          "legacy_decode_versions": [1],
           "layout": {
-            "0": "version=1",
-            "1": "direction: 0 empty, 1 bill-to-peer, 2 bill-to-dock",
+            "0": "version=2",
+            "1": "direction: 0 empty, 1 bill-to-peer, 2 bill-to-dock, 3 recovery-blocked",
             "2": "kind: 0 empty, 1 invoice, 2 consignment",
             "3": "reserved=0",
             "4..7": "session_id uint32",
@@ -81,7 +82,7 @@
         "release_after_press": "no-effect",
         "input": {
           "wemos": "GPIO12 active-high momentary TTP223 digital touch",
-          "ttgo_tft": "GPIO12 active-high momentary TTP223 digital touch"
+          "ttgo_oled": "GPIO12 active-high momentary TTP223 digital touch"
         },
         "rssi_min_dbm": -60,
         "discovery_name_prefix": "RgbBill",

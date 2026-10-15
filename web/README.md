@@ -22,6 +22,14 @@ Role A retrieves the tapped invoice and presents an immutable plan. Broadcast
 is unreachable until the operator types the displayed exact
 `CONFIRM <plan_id>` phrase.
 
+For a trusted LAN demo that must remain reachable through both localhost and
+the Wi-Fi address, set `DOCK_HTTP_HOST=0.0.0.0` in both role environments.
+Keep role A on port `8788` and role B on port `8789`, then open either
+`http://127.0.0.1:<port>/` locally or `http://<wifi-ip>:<port>/` from the LAN.
+The wildcard listens on every host interface, including VPN interfaces. Do not
+forward these ports: the prototype has no web-user authentication, so any
+client that can reach them can operate the dock UI.
+
 Post-broadcast staging failure retains the exact consignment and exposes a
 stage-only retry that cannot send again. Import failure similarly retains and
 reuses the received artifact. See
@@ -48,6 +56,9 @@ The primary UI is deliberately state-driven: role A exposes **Send USDT** and
 role B exposes **Receive USDT**. Each action inventories the registered bill
 before choosing a BLE direction. Text commands remain under an Advanced
 disclosure for diagnostics and recovery, not as the normal human procedure.
+Inventory v2 also exposes `recovery-blocked`; both primary actions fail closed
+in that state so a retained DockGatt artifact can never be mistaken for an
+empty bill and produce a second invoice.
 
 | Path | Job |
 | --- | --- |

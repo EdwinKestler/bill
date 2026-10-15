@@ -156,20 +156,30 @@ def decode_artifact_metadata(raw: bytes) -> ArtifactMetadata:
     version, direction, raw_kind, reserved, session_id, size, cents = struct.unpack(
         "<BBBBIII", raw
     )
-    if version != 1 or reserved != 0 or direction not in (0, 1, 2):
+    if version not in (1, 2) or reserved != 0:
         raise ValueError("bill returned invalid artifact metadata header")
+    allowed_directions = (0, 1, 2) if version == 1 else (0, 1, 2, 3)
+    if direction not in allowed_directions:
+        raise ValueError("bill returned invalid artifact metadata direction")
     if direction == 0:
         if raw_kind != 0 or session_id != 0 or size != 0 or cents != 0:
             raise ValueError("empty bill returned non-empty artifact metadata")
         return ArtifactMetadata("empty", None, 0, 0, 0)
+    if direction == 3 and raw_kind == 0:
+        if session_id != 0 or size != 0 or cents != 0:
+            raise ValueError("blocked bill returned inconsistent artifact metadata")
+        return ArtifactMetadata("blocked", None, 0, 0, 0)
     try:
         kind = FrameKind(raw_kind)
     except ValueError as exc:
         raise ValueError("bill returned invalid artifact kind") from exc
     if kind not in (FrameKind.INVOICE, FrameKind.CONSIGNMENT) or not size:
         raise ValueError("bill returned incomplete artifact metadata")
+    decoded_direction = (
+        "to-peer" if direction == 1 else "to-dock" if direction == 2 else "blocked"
+    )
     return ArtifactMetadata(
-        "to-peer" if direction == 1 else "to-dock",
+        decoded_direction,
         kind,
         session_id,
         size,
@@ -339,6 +349,10 @@ async def receive_chunk_file(
                 )
             )
         )
+        if metadata.direction == "blocked":
+            raise ChunkProtocolError(
+                "bill storage recovery is required; inspect and explicitly discard the retained artifact before retrying"
+            )
         if metadata.direction != "to-dock":
             raise ChunkProtocolError(
                 "bill has no artifact ready for the dock; inspect the bill and tap first"

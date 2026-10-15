@@ -156,7 +156,7 @@ void DockGatt::begin() {
 
   artifactMetaCharacteristic_ = service->createCharacteristic(
       BLE_UUIDs::ARTIFACT_META, BLECharacteristic::PROPERTY_READ);
-  uint8_t emptyArtifact[16] = {1};
+  uint8_t emptyArtifact[16] = {2};
   artifactMetaCharacteristic_->setValue(emptyArtifact, sizeof(emptyArtifact));
 
   service->start();
@@ -666,6 +666,25 @@ bool DockGatt::takeInboundTransfer(InboundTransfer& transfer) {
   return true;
 }
 
+bool DockGatt::peekInboundTransfer(InboundTransfer& transfer) const {
+  if (chunkMutex_ == nullptr ||
+      xSemaphoreTake(chunkMutex_, portMAX_DELAY) != pdTRUE) {
+    return false;
+  }
+  if (!inboundReady_) {
+    xSemaphoreGive(chunkMutex_);
+    return false;
+  }
+  transfer.kind = inboundKind_;
+  transfer.sessionId = inboundSessionId_;
+  transfer.size = inboundSize_;
+  transfer.denominationCents = inboundDenominationCents_;
+  strncpy(transfer.path, CHUNK_READY_PATH, sizeof(transfer.path) - 1);
+  transfer.path[sizeof(transfer.path) - 1] = '\0';
+  xSemaphoreGive(chunkMutex_);
+  return true;
+}
+
 bool DockGatt::moveInboundTransfer(InboundTransfer& transfer,
                                    const char* destination) {
   if (destination == nullptr || destination[0] != '/' ||
@@ -704,7 +723,7 @@ bool DockGatt::moveInboundTransfer(InboundTransfer& transfer,
 void DockGatt::setArtifactState(uint8_t direction, uint8_t kind,
                                 uint32_t sessionId, size_t size,
                                 uint32_t denominationCents) {
-  if (artifactMetaCharacteristic_ == nullptr || direction > 2 || kind > 2) {
+  if (artifactMetaCharacteristic_ == nullptr || direction > 3 || kind > 2) {
     return;
   }
   if (direction == artifactDirection_ && kind == artifactKind_ &&
@@ -718,19 +737,26 @@ void DockGatt::setArtifactState(uint8_t direction, uint8_t kind,
   artifactSize_ = size;
   artifactDenominationCents_ = denominationCents;
 
-  uint8_t encoded[16] = {1, direction, kind, 0};
+  uint8_t encoded[16] = {2, direction, kind, 0};
   writeLe32(encoded + 4, sessionId);
   writeLe32(encoded + 8, static_cast<uint32_t>(size));
   writeLe32(encoded + 12, denominationCents);
   artifactMetaCharacteristic_->setValue(encoded, sizeof(encoded));
 
-  const char* status = direction == 0 ? "idle" : direction == 1 ? "tap" : "pending";
+  const char* status = direction == 0   ? "idle"
+                       : direction == 1 ? "tap"
+                       : direction == 2 ? "pending"
+                                        : "error";
   const char* display = "EMPTY";
   if (direction == 1 && kind == 1) display = "INVOICE TAP";
   if (direction == 2 && kind == 1) display = "INVOICE DOCK";
   if (direction == 1 && kind == 2) display = "PROOF TAP";
   if (direction == 2 && kind == 2) display = "PROOF DOCK";
-  setState(direction == 0 ? 0 : denominationCents, status, display);
+  if (direction == 3) display = kind == 0 ? "CLEAR STORAGE" : "RECOVERY";
+  setState(direction == 0 || (direction == 3 && kind == 0)
+               ? 0
+               : denominationCents,
+           status, display);
 }
 
 bool DockGatt::takeTapDiscardRequest() {

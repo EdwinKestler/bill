@@ -52,9 +52,17 @@ void loop() {
 
   TapGatt::ArtifactState artifact;
   if (tapGatt.artifactState(artifact)) {
-    dockGatt.setArtifactState(
-        artifact.direction, artifact.kind, artifact.sessionId, artifact.size,
-        artifact.denominationCents);
+    DockGatt::InboundTransfer retained;
+    if (dockGatt.peekInboundTransfer(retained)) {
+      // A complete dock artifact that could not move into TapGatt must never
+      // look empty. Direction 3 is an explicit operator-recovery boundary.
+      dockGatt.setArtifactState(3, retained.kind, retained.sessionId,
+                                retained.size, retained.denominationCents);
+    } else {
+      dockGatt.setArtifactState(
+          artifact.direction, artifact.kind, artifact.sessionId, artifact.size,
+          artifact.denominationCents);
+    }
   }
 
   uint32_t cents = 0;

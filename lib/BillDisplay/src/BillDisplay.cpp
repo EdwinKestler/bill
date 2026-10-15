@@ -16,10 +16,8 @@ bool BillDisplay::probeAddress(uint8_t address) {
 bool BillDisplay::begin() {
   Serial.printf("display: I2C SDA=%u SCL=%u\n", OLED_SDA_PIN, OLED_SCL_PIN);
 
-  // LilyGO's TTGO LoRa32 V1.3 reference holds the onboard OLED in reset on
-  // GPIO16, then releases it before initializing or probing I2C. Probing first
-  // cannot succeed while the controller is still held in reset. The WEMOS
-  // profile uses -1 and skips this board-specific step.
+  // The legacy onboard TTGO profile holds its OLED in reset on GPIO16. The
+  // replacement external OLED and WEMOS profiles use -1 and skip this step.
   if (OLED_RESET_PIN >= 0) {
     Serial.printf("display: reset GPIO=%d\n", OLED_RESET_PIN);
     pinMode(OLED_RESET_PIN, OUTPUT);
@@ -30,7 +28,9 @@ bool BillDisplay::begin() {
   }
 
   Wire.begin(OLED_SDA_PIN, OLED_SCL_PIN);
-  Wire.setClock(400000);
+  Wire.setClock(OLED_I2C_CLOCK_HZ);
+  Serial.printf("display: I2C clock=%lu Hz\n",
+                static_cast<unsigned long>(OLED_I2C_CLOCK_HZ));
 
   if (probeAddress(OLED_ADDRESS_PRIMARY)) {
     address_ = OLED_ADDRESS_PRIMARY;
@@ -41,8 +41,8 @@ bool BillDisplay::begin() {
     return false;
   }
 
-  // Wire is already configured with the LOLIN32 pins, so prevent the library
-  // from reinitializing the peripheral with board defaults.
+  // Wire is already configured with the selected board pins, so prevent the
+  // library from reinitializing the peripheral with board defaults.
   // Reset was performed above, before the address probe. Do not pulse it a
   // second time inside Adafruit_SSD1306::begin().
   if (!display_.begin(SSD1306_SWITCHCAPVCC, address_, false, false)) {

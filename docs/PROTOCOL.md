@@ -6,10 +6,11 @@ Rendered views of this contract are available as the
 sources are indexed in [docs/diagrams/README.md](diagrams/README.md).
 
 The first tap/chunk protocol was physically accepted on 2026-10-11. The
-human-first inventory revision below is implemented and build-verified on both
-board profiles, but is **not physically accepted until both boards are flashed
-and the acceptance procedure is repeated**. `include/config.h` and
-`docs/devs/gatt-contract.json` stay in lockstep with this document.
+human-first inventory revision below was flashed and physically accepted on
+both board profiles on 2026-10-15 with settled $5 Mutinynet transaction
+`1f8953866f24f5b64ec02875aa51507fc6c76777646680eddfb573247cf5d45f`.
+`include/config.h` and `docs/devs/gatt-contract.json` stay in lockstep with
+this document.
 
 Device name: `RgbBill`.
 
@@ -37,6 +38,13 @@ instruction, never a normal CHUNK_OUT timeout.
 
 No action silently discards or overwrites an artifact. If the stored artifact
 does not match the selected action, the dock explains the next physical step.
+If a complete dock artifact cannot be handed to the tap service, inventory v2
+reports `recovery-blocked` instead of `empty`. Both primary actions then stop
+before creating, reading, or sending another artifact. The screen shows
+`RECOVERY` with the retained amount when its metadata is known, or `CLEAR
+STORAGE` without an amount for an untyped orphan. A touch press is ignored in
+this state. Recovery remains an explicit operator `chunk-discard`, followed by
+retrying the retained dock action; firmware never discards automatically.
 Each complete artifact has a small SPIFFS metadata sidecar. Firmware restores
 the kind, session, size, denomination, and direction after reset; a missing or
 invalid sidecar is never treated as permission to overwrite an existing file.
@@ -58,6 +66,8 @@ balances remain on the laptop dock.
 | invoice, bill→dock | `$5.00 / INVOICE DOCK` | Dock A: **Send USDT** reads invoice |
 | consignment, bill→peer | `$5.00 / PROOF TAP` | Press the receiving bill once |
 | consignment, bill→dock | `$5.00 / PROOF DOCK` | Dock B: **Receive USDT** imports proof |
+| recovery blocked, known artifact | `$5.00 / RECOVERY` | Explicitly discard bill staging, then retry the retained dock action |
+| recovery blocked, unknown orphan | `CLEAR STORAGE` (no amount) | Explicitly discard the orphan before starting a transfer |
 
 On every Connect, Send, or Receive action, the dock reads `IDENTITY`, `STATUS`,
 `DENOMINATION`, and `ARTIFACT_META` in the same BLE session. The
@@ -77,12 +87,15 @@ Laptop is central. Bill is peripheral. One active transfer per connection.
 | CMD | `…c005` | Write-with-response | UTF-8 command v1 |
 | CHUNK_IN | `…c006` | Write-with-response | Binary frame v1, dock → bill |
 | CHUNK_OUT | `…c007` | Notify | Binary frame v1, bill → dock |
-| ARTIFACT_META | `…c008` | Read | 16-byte inventory v1 |
+| ARTIFACT_META | `…c008` | Read | 16-byte inventory v2 |
 
-`ARTIFACT_META` is little-endian: version (1 byte, `0x01`), direction (1 byte:
-empty `0`, bill-to-peer `1`, bill-to-dock `2`), kind (1 byte: empty `0`, invoice
-`1`, consignment `2`), reserved zero (1 byte), session id (uint32), byte size
-(uint32), and denomination cents (uint32).
+`ARTIFACT_META` v2 is little-endian: version (1 byte, `0x02`), direction (1
+byte: empty `0`, bill-to-peer `1`, bill-to-dock `2`, recovery-blocked `3`),
+kind (1 byte: empty/unknown `0`, invoice `1`, consignment `2`), reserved zero
+(1 byte), session id (uint32), byte size (uint32), and denomination cents
+(uint32). Docks decode v1 for upgrade compatibility, but direction `3` is
+valid only in v2. A known complete blocked artifact preserves its kind,
+session, size, and denomination. An untyped orphan uses zero for those fields.
 
 Dock core exposes one non-production display command:
 `diag:display:empty`. It shows `DISPLAY TEST` without a numeric amount and
@@ -163,7 +176,7 @@ consignments.
 Bill–bill only. The bill holding a staged artifact is always the BLE
 peripheral/sender. A bill with no staged artifact becomes central/receiver
 when a debounced rising press edge arms a one-shot 15-second discovery window.
-Both the WEMOS prototype and TTGO TFT profile use an active-high digital TTP223
+Both the WEMOS prototype and TTGO external-OLED profile use an active-high digital TTP223
 touch module on GPIO12. The input may be released immediately: release does
 not cancel scanning or an accepted BLE session. This removes central/central
 races and the need to hold either input.

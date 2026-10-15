@@ -7,13 +7,13 @@ flowchart TB
     subgraph firmware["ESP32 bill firmware"]
         main["src/main.cpp composition only"]:::implemented
         display["lib/BillDisplay OLED driver"]:::implemented
-        tftDisplay["lib/TftBillDisplay external ILI9341 driver"]:::implemented
+        tftDisplay["lib/TftBillDisplay legacy ILI9341 rollback driver"]:::implemented
         dockGatt["lib/DockGatt frozen dock service"]:::implemented
         tapProtocol["lib/TapProtocol metadata and button RSSI gate"]:::implemented
         tapGatt["lib/TapGatt dual role session and tap radio"]:::implemented
         config["include/config.h pins and UUIDs"]:::contract
         main --> display
-        main --> tftDisplay
+        main -.->|"legacy profile only"| tftDisplay
         main --> dockGatt
         main --> tapGatt
         tapProtocol --> tapGatt

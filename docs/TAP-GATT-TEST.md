@@ -2,7 +2,7 @@
 
 This test moves the inert 520-byte fixture between the WEMOS LOLIN32 and the
 TTGO LoRa32 over bill-to-bill BLE. It does not invoke rgb-lib, spend funds, or
-broadcast a transaction. The TTGO uses the external ILI9341 TFT profile.
+broadcast a transaction. The TTGO uses the external GPIO21/22 OLED profile.
 
 Both boards use a momentary press of an active-high TTP223 digital touch module
 on GPIO12. Either press arms a 15-second one-shot receive window, so release
@@ -43,7 +43,7 @@ images after collecting both directions:
 
 ```bash
 .venv-platformio/bin/pio run -e esp32-bill -t upload
-.venv-platformio/bin/pio run -e ttgo-lora32-tft-test -t upload
+.venv-platformio/bin/pio run -e ttgo-lora32-oled-test -t upload
 ```
 
 The main firmware keeps duplicate advertisement reports throughout the
@@ -57,9 +57,9 @@ From `ideas/bill/`:
 
 ```bash
 .venv-platformio/bin/pio run -e esp32-bill
-.venv-platformio/bin/pio run -e ttgo-lora32-tft-test
+.venv-platformio/bin/pio run -e ttgo-lora32-oled-test
 .venv-platformio/bin/pio run -e esp32-bill -t upload
-.venv-platformio/bin/pio run -e ttgo-lora32-tft-test -t upload
+.venv-platformio/bin/pio run -e ttgo-lora32-oled-test -t upload
 ```
 
 Open one serial monitor per board if desired. Expected WEMOS and TTGO boot

@@ -13,7 +13,7 @@ phone app, and no guessing whether the bill should be read or written.
 | Piece | Where | Job |
 | --- | --- | --- |
 | Dock A / Dock B | Two laptops | Python web desk (`web/`, :8788), Bleak GATT (`dock/`), rgb-lib-python, QVAC voice, Mutinynet broadcast |
-| Bill A / Bill B | WEMOS LOLIN32 and LilyGO TTGO LoRa32 V1.3 / ESP32 | SSD1306 OLED or external ILI9341 TFT, tap input, radio. **No** rgb-lib, **no** QVAC |
+| Bill A / Bill B | WEMOS LOLIN32 and LilyGO TTGO LoRa32 V1.3 / ESP32 | SSD1306 OLED, tap input, radio. **No** rgb-lib, **no** QVAC |
 | GATT-dock | laptop ↔ its bill | On-demand connection. Inventory, commands, status, denomination, opaque chunks |
 | GATT-tap | bill ↔ bill | A press edge arms a bounded receiver window; high RSSI gates the peer. Carries invoice + consignment |
 
@@ -58,9 +58,11 @@ On-chain rgb-lib, not RLN. Lightning is a channel, not a note.
 - GATT-dock chunk v1 is implemented: CRC32, ordered stop-and-wait frames,
   per-frame ACKs, and one opaque SPIFFS-staged artifact up to 640 KiB. Its
   diagnostic echo validates both directions without invoking a wallet.
-- Dock artifact inventory v1 is a 16-byte read-only characteristic. It makes
+- Dock artifact inventory v2 is a 16-byte read-only characteristic. It makes
   connect-time direction selection deterministic and prevents blind
-  CHUNK_OUT waits.
+  CHUNK_OUT waits. Direction `recovery-blocked` prevents a retained DockGatt
+  artifact or tap-storage orphan from being misreported as empty and blocks a
+  second invoice until explicit operator recovery.
 - GATT-tap: the bill holding the staged artifact stays **peripheral/sender**;
   one debounced tap on the empty bill arms a 15-second **central/receiver**
   window. The operator may release immediately. The receiver connects only if
@@ -81,13 +83,14 @@ On-chain rgb-lib, not RLN. Lightning is a channel, not a note.
   reset, and flashing.
 - The production `esp32-bill` and diagnostic `oled-test` environments use the
   stable CP2104 USB by-id path. Do not upload an ESP32-S3 image to this board.
-- Second test bill: LilyGO TTGO LoRa32 V1.3-868. The isolated
-  `ttgo-lora32-tft-test` profile uses an external 240x320 ILI9341 in landscape
-  mode (SCK 18, MOSI 23, D/C 2, reset 4, CS 15) and an active-high digital
-  TTP223 touch input on GPIO12. GPIO12 is also an ESP32 flash-voltage strapping
-  pin, so the sensor must not be touched or held high during reset. Its stable CP2102
-  USB path is kept separate from the WEMOS. LoRa remains disabled because the
-  TFT reuses radio-board pins. The failed onboard OLED and its legacy diagnostic
+- Second test bill: LilyGO TTGO LoRa32 V1.3-868. The active
+  `ttgo-lora32-oled-test` profile uses a replacement external 128x64
+  SSD1306-compatible display on SDA GPIO21 / SCL GPIO22 with no reset lead,
+  plus the active-high TTP223 touch input on GPIO12. GPIO12 is also an ESP32
+  flash-voltage strapping pin, so the sensor must not be touched or held high
+  during reset. Its stable CP2102 USB path is kept separate from the WEMOS.
+  The former ILI9341 build remains available only as
+  `ttgo-lora32-tft-legacy`; the failed onboard OLED and older diagnostic
   profiles remain documented. See
   [TTGO-LORA32-V1.3-TEST.md](TTGO-LORA32-V1.3-TEST.md).
 
@@ -103,10 +106,11 @@ On-chain rgb-lib, not RLN. Lightning is a channel, not a note.
    2026-10-11.**
 5. Integrate the accepted flow into `python -m web.server`. **Implemented with
    exact typed confirmation and no-resend recovery; browser-driven physical
-   acceptance remains.**
+   acceptance completed on 2026-10-15.**
 6. Connect QVAC “print a five” intent parsing to the accepted web action.
-7. Human-first inventory/tap metadata v2. **Implemented and build-verified;
-   physical acceptance is pending a two-board flash.**
+7. Human-first inventory/tap metadata v2. **Implemented, flashed, and
+   physically accepted on both boards with a settled $5 Mutinynet transfer on
+   2026-10-15.**
 
 ## Web dock language
 

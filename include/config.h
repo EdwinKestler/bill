@@ -5,7 +5,15 @@
 // Board-specific hardware. The production default remains the WEMOS LOLIN32;
 // the TTGO profile is selected only by the ttgo-lora32-test environment.
 #if defined(RGB_BILL_TTGO_LORA32_V13)
-#if defined(RGB_BILL_TTGO_TFT_ILI9341)
+#if defined(RGB_BILL_TTGO_EXTERNAL_OLED)
+// Active TTGO bill profile: replacement four-wire SSD1306-compatible OLED on
+// GPIO21/GPIO22 plus the accepted active-high TTP223 input on GPIO12.
+constexpr uint8_t LED_STATUS_PIN = 2;
+constexpr uint8_t TAP_BUTTON_PIN = 12;
+constexpr uint8_t TAP_BUTTON_MODE = INPUT;
+constexpr uint8_t TAP_BUTTON_ACTIVE_LEVEL = HIGH;
+constexpr char TAP_INPUT_NAME[] = "TTP223";
+#elif defined(RGB_BILL_TTGO_TFT_ILI9341)
 // External ILI9341 test profile. The TFT consumes the old onboard-OLED pins
 // GPIO4/GPIO15, and GPIO2 is D/C, so there is no separate status LED. GPIO12
 // reads the TTP223 OUT signal. GPIO12 is also the MTDI flash-voltage strap:
@@ -28,7 +36,8 @@ constexpr uint8_t TAP_BUTTON_ACTIVE_LEVEL = LOW;
 constexpr char TAP_INPUT_NAME[] = "button";
 #endif
 
-#if defined(RGB_BILL_TTGO_OLED_21_22)
+#if defined(RGB_BILL_TTGO_EXTERNAL_OLED) || \
+    defined(RGB_BILL_TTGO_OLED_21_22)
 // Current LilyGo T3 V1.3 SX1276 documentation and utilities.h profile.
 // LilyGo calls reset UNUSED_PIN (numeric 0); use -1 here so BillDisplay does
 // not pulse the ESP32 boot-strapping GPIO0 as if it were a display reset.
@@ -59,6 +68,14 @@ constexpr uint8_t OLED_SCL_PIN = 22;
 constexpr int8_t OLED_RESET_PIN = -1;
 constexpr char BLE_DEVICE_NAME[] = "RgbBill";
 constexpr char BLE_IDENTITY[] = "bill-unprovisioned";
+#endif
+
+#if defined(RGB_BILL_TTGO_EXTERNAL_OLED)
+// Match the electrically accepted replacement-panel diagnostic first. The
+// slower clock is negligible for this 1 KiB framebuffer and maximizes margin.
+constexpr uint32_t OLED_I2C_CLOCK_HZ = 100000;
+#else
+constexpr uint32_t OLED_I2C_CLOCK_HZ = 400000;
 #endif
 
 constexpr int16_t OLED_WIDTH = 128;

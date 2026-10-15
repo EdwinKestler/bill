@@ -28,6 +28,7 @@ class DockGatt {
   BLEServer* server() const { return server_; }
   bool takeDisplayUpdate(uint32_t& cents, char* status, size_t statusSize);
   bool takeInboundTransfer(InboundTransfer& transfer);
+  bool peekInboundTransfer(InboundTransfer& transfer) const;
   bool moveInboundTransfer(InboundTransfer& transfer,
                            const char* destination);
   bool takeTapDiscardRequest();

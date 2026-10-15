@@ -35,38 +35,37 @@ LED changing proves that the sensor IC detects touch, but the serial transition
 proves that `OUT`, the wiring, and the ESP32 input all work. If the LED changes
 while serial remains `gpio12=LOW`, inspect the OUT wire and common ground.
 
-## Current external TFT + touch profile
+## Active external OLED + touch profile
 
-The current test hardware replaces the known-dark onboard OLED with a 240x320
-ILI9341 SPI TFT and replaces the BOOT-button tap input with an active-high
-digital touch module:
+The active TTGO bill hardware replaces the known-dark onboard panel with a
+four-wire 128x64 SSD1306-compatible OLED and uses an active-high digital touch
+module instead of the BOOT button:
 
 | Signal | TTGO GPIO |
 | --- | ---: |
-| TFT LED/backlight power | **3V3, not a GPIO**, unless the exact module documents a logic-level LED input |
-| TFT SCK | 18 |
-| TFT SDI/MOSI | 23 |
-| TFT D/C | 2 |
-| TFT reset | 4 |
-| TFT CS | 15 |
+| OLED VCC | 3V3 |
+| OLED GND | GND |
+| OLED SDA | 21 |
+| OLED SCL | 22 |
+| OLED reset | not connected (`-1` in firmware) |
 | TTP223 digital output | 12, active HIGH; keep released during reset |
-| TFT VCC | 3V3 |
-| TFT GND | GND |
 
-LoRa is deliberately disabled because the TFT reuses board radio pins. Build
-and, only when a human requests it, upload the isolated profile:
+LoRa is deliberately outside the RGB bill protocol. Build and, only when a
+human requests it, upload the combined OLED/BLE/tap profile:
 
 ```bash
-.venv-platformio/bin/pio run -e ttgo-lora32-tft-test
-.venv-platformio/bin/pio run -e ttgo-lora32-tft-test -t upload
-.venv-platformio/bin/pio device monitor -e ttgo-lora32-tft-test
+.venv-platformio/bin/pio run -e ttgo-lora32-oled-test
+.venv-platformio/bin/pio run -e ttgo-lora32-oled-test -t upload
+.venv-platformio/bin/pio device monitor -e ttgo-lora32-oled-test
 ```
 
 Expected serial evidence includes:
 
 ```text
-display: ILI9341 ready 320x240 rotation=1 SPI=20MHz
-TTGO_TEST: ILI9341 INIT PASS (write-only; confirm image visually)
+TTGO_TEST: OLED SDA=21 SCL=22 RESET=-1
+TTGO_TEST: touch GPIO=12 active=HIGH input=TTP223
+display: SSD1306 ready at 0x3C
+TTGO_TEST: OLED PASS at 0x3C
 tap: GATT ready; press GPIO12 TTP223 once near sender (RSSI >= -60 dBm)
 ```
 
@@ -74,9 +73,12 @@ A debounced touch arms reception for 15 seconds. Release immediately; the
 accepted BLE session continues independently of the TTP223 output level. A
 second touch cancels the armed window or active receive session.
 
-The screen must visually show `RGB BILL`, `$0.00`, and `BLE READY`. Because the
-wiring is write-only, successful initialization is not proof that the physical
-panel displayed pixels.
+The screen must visually show `RGB BILL` and `BLE READY` with no numeric amount
+while its artifact inventory is empty. A complete invoice or consignment makes
+the corresponding denomination and direction state appear.
+
+The former ILI9341 build is retained only for rollback as
+`ttgo-lora32-tft-legacy`; it is no longer the active TTGO bill profile.
 
 ## Legacy onboard OLED profile
 
@@ -176,6 +178,52 @@ spend.
 Hardware note: the tested TTGO unit's OLED controller ACKs and accepts the raw
 all-pixels-on command, but its panel remains dark. Treat its OLED/flex or panel
 power path as failed; BLE remains usable for chunk acceptance.
+
+## Replacement external OLED test
+
+Use the isolated diagnostic to verify the replacement four-wire 128x64
+SSD1306-compatible OLED without starting BLE or the tap state machine:
+
+| OLED lead | TTGO connection |
+| --- | --- |
+| VCC | 3V3 |
+| GND | GND |
+| SDA | GPIO21 |
+| SCL | GPIO22 |
+
+The external ILI9341 TFT may remain wired because this OLED bus no longer
+shares its GPIO4 reset or GPIO15 chip-select pins; the diagnostic simply does
+not initialize the TFT. The replacement OLED has no reset lead, so this test
+uses `RESET=-1` and does not pulse GPIO16. It probes `0x3C` and `0x3D` at a
+conservative 100 kHz.
+
+Build first; this does not flash the board:
+
+```bash
+.venv-platformio/bin/pio run -e ttgo-oled-i2c-test
+```
+
+When ready to replace the current TTGO image:
+
+```bash
+.venv-platformio/bin/pio run -e ttgo-oled-i2c-test -t upload
+.venv-platformio/bin/pio device monitor -e ttgo-oled-i2c-test
+```
+
+A working display shows `TTGO OLED`, `SDA 21 SCL 22`, and the responding I2C
+address. It alternates normal and inverted output every two seconds. Expected
+serial output includes:
+
+```text
+TTGO_OLED_I2C_TEST: SDA=21 SCL=22 RESET=-1
+TTGO_OLED_I2C_TEST: probe_0x3C=ACK error=0
+TTGO_OLED_I2C_TEST: PASS - visible test at 0x3C
+TTGO_OLED_I2C_TEST: phase=INVERTED
+TTGO_OLED_I2C_TEST: phase=NORMAL
+```
+
+An ACK proves an I2C controller responded; the alternating image remains the
+required visual proof that the replacement panel itself works.
 
 ## Current T3 V1.3 pin-map A/B test
 

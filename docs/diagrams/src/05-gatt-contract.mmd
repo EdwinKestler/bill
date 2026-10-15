@@ -13,7 +13,7 @@ flowchart LR
         cmd["CMD c005 | Write with response | UTF-8 command v1"]:::implemented
         chunkIn["CHUNK_IN c006 | Write with response | data or ACK"]:::implemented
         chunkOut["CHUNK_OUT c007 | Notify | ACK or data"]:::implemented
-        artifact["ARTIFACT_META c008 | Read | direction kind session size cents"]:::implemented
+        artifact["ARTIFACT_META c008 | Read | v2 direction includes recovery-blocked"]:::implemented
     end
 
     sender["Staged bill as BLE peripheral sender"]:::peer

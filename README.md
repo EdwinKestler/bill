@@ -62,7 +62,7 @@ Search Palimnex from `/media/kestl/andor/github/rgbhackathon`. Skills under
 | Voice | QVAC `tetherto-qvac-sdk==0.21.0` + `QWEN3_600M_INST_Q4` in `.qvac` |
 | BLE cookbook | `/media/kestl/andor/github/waveshares3` (patterns only) |
 
-Firmware boots at `$0.00 / BLE READY` and advertises frozen dock-core v1 plus
+Firmware boots at `EMPTY / BLE READY` with no numeric amount and advertises frozen dock-core v1 plus
 implemented chunk-v1 GATT. The read-only state command reports
 identity/status/denomination; the fixed display diagnostic and byte-exact
 chunk loopback do not touch a wallet. Tap GATT v1 reuses the opaque chunk
@@ -71,10 +71,12 @@ and a −60 dBm RSSI gate. Bidirectional two-board transport was physically
 accepted on 2026-10-11. The isolated wallet-to-BLE bridge was then live
 accepted with a confirmed 20 USDT Mutinynet transfer in both wallet directions:
 invoice B→A and exact out-of-band consignment A→B. Web-desk integration is
-implemented; browser-driven physical acceptance is the next gate.
+implemented. The human-first inventory-v2 browser flow was physically accepted
+on both boards on 2026-10-15 with a settled $5 Mutinynet transfer
+(`1f8953866f24f5b64ec02875aa51507fc6c76777646680eddfb573247cf5d45f`).
 
 The web confirmation path now uses that accepted adapter. It exposes the
 immutable RGB plan, requires the typed exact phrase, records the broadcast
 before BLE staging, and retains exact artifacts for stage/import-only recovery.
-Both role servers pass live startup and balance smoke checks; the first
-browser-driven physical transfer is the remaining web acceptance gate.
+Both role servers pass live startup, LAN/localhost binding, balance refresh,
+and browser-driven physical transfer acceptance checks.

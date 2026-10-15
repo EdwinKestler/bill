@@ -12,7 +12,8 @@
 // LilyGO TTGO LoRa32 V1.3-868 combined hardware diagnostic.
 // This intentionally leaves the SX1276 radio uninitialized. It verifies the
 // selected display and the same dock-core BLE surface used by the bill
-// firmware. LoRa remains disabled because the external TFT reuses radio pins.
+// firmware. LoRa remains outside the RGB bill protocol; the legacy TFT profile
+// also reuses radio pins.
 
 namespace {
 #if defined(RGB_BILL_TTGO_TFT_ILI9341)
@@ -35,7 +36,6 @@ void setup() {
       "TTGO_TEST: ILI9341 SCK=%u MOSI=%u DC=%u RESET=%u CS=%u LED=%u\n",
       TFT_SCK_PIN, TFT_MOSI_PIN, TFT_DC_PIN, TFT_RESET_PIN, TFT_CS_PIN,
       TFT_BACKLIGHT_PIN);
-  Serial.printf("TTGO_TEST: touch GPIO=%u active=HIGH\n", TAP_BUTTON_PIN);
 #else
   Serial.printf("TTGO_TEST: OLED SDA=%u SCL=%u RESET=%d\n", OLED_SDA_PIN,
                 OLED_SCL_PIN, OLED_RESET_PIN);
@@ -43,6 +43,10 @@ void setup() {
   pinMode(LED_STATUS_PIN, OUTPUT);
   digitalWrite(LED_STATUS_PIN, LOW);
 #endif
+  Serial.printf("TTGO_TEST: touch GPIO=%u active=%s input=%s\n",
+                TAP_BUTTON_PIN,
+                TAP_BUTTON_ACTIVE_LEVEL == HIGH ? "HIGH" : "LOW",
+                TAP_INPUT_NAME);
 
   if (billDisplay.begin()) {
 #if defined(RGB_BILL_TTGO_TFT_ILI9341)
@@ -97,9 +101,15 @@ void loop() {
 
   TapGatt::ArtifactState artifact;
   if (tapGatt.artifactState(artifact)) {
-    dockGatt.setArtifactState(
-        artifact.direction, artifact.kind, artifact.sessionId, artifact.size,
-        artifact.denominationCents);
+    DockGatt::InboundTransfer retained;
+    if (dockGatt.peekInboundTransfer(retained)) {
+      dockGatt.setArtifactState(3, retained.kind, retained.sessionId,
+                                retained.size, retained.denominationCents);
+    } else {
+      dockGatt.setArtifactState(
+          artifact.direction, artifact.kind, artifact.sessionId, artifact.size,
+          artifact.denominationCents);
+    }
   }
 
   uint32_t cents = 0;

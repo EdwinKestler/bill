@@ -29,7 +29,8 @@ class TapGatt {
   };
 
   struct ArtifactState {
-    uint8_t direction = 0;  // 0 empty, 1 bill-to-peer, 2 bill-to-dock
+    // 0 empty, 1 bill-to-peer, 2 bill-to-dock, 3 recovery blocked.
+    uint8_t direction = 0;
     uint8_t kind = 0;
     uint32_t sessionId = 0;
     size_t size = 0;

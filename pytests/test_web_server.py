@@ -410,6 +410,26 @@ def test_send_usdt_inventory_selects_invoice_read_and_confirmation(tmp_path):
     assert result["pending"]["confirmation_phrase"] == "CONFIRM plan-123"
 
 
+def test_send_usdt_blocked_inventory_fails_before_wallet_plan(tmp_path):
+    reset_state(role="A", cents=5500)
+    service = FakeWebService(tmp_path, role=BillRole.A)
+    blocked = InventoryRegistry(
+        {
+            "direction": "blocked",
+            "kind": int(FrameKind.INVOICE),
+            "denomination_cents": 500,
+        }
+    )
+
+    result = handle_send_usdt(500, service, blocked)
+
+    assert result["ok"] is False
+    assert result["broadcast"] is False
+    assert "storage recovery is required" in result["error"]
+    assert "Do not create or send another artifact" in result["error"]
+    assert _state["pending"] is None
+
+
 def test_receive_usdt_empty_inventory_stages_invoice(tmp_path):
     reset_state(role="B", cents=4000)
     service = FakeWebService(tmp_path, role=BillRole.B)
@@ -425,6 +445,29 @@ def test_receive_usdt_empty_inventory_stages_invoice(tmp_path):
 
     assert result["ok"] is True
     assert result["receipt"]["action"] == "invoice-stage"
+
+
+def test_receive_usdt_blocked_inventory_does_not_create_second_invoice(tmp_path):
+    reset_state(role="B", cents=4500)
+    service = FakeWebService(tmp_path, role=BillRole.B)
+    blocked = InventoryRegistry(
+        {
+            "direction": "blocked",
+            "kind": int(FrameKind.INVOICE),
+            "denomination_cents": 500,
+        }
+    )
+
+    def unexpected_stage(_cents):
+        raise AssertionError("blocked inventory must not create another invoice")
+
+    service.stage_invoice = unexpected_stage
+    result = handle_receive_usdt(500, service, blocked)
+
+    assert result["ok"] is False
+    assert result["broadcast"] is False
+    assert "storage recovery is required" in result["error"]
+    assert _state["pending"] is None
 
 
 def test_main_loads_registration_without_startup_ble_connect(monkeypatch):

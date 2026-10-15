@@ -174,6 +174,40 @@ def test_artifact_inventory_decodes_direction_kind_and_amount():
     assert artifact.denomination_cents == 500
 
 
+def test_artifact_inventory_v2_decodes_known_blocked_artifact():
+    raw = (
+        bytes([2, 3, int(bill_dock.FrameKind.INVOICE), 0])
+        + (0xFDB1D99B).to_bytes(4, "little")
+        + (210).to_bytes(4, "little")
+        + (500).to_bytes(4, "little")
+    )
+
+    artifact = bill_dock.decode_artifact_metadata(raw)
+
+    assert artifact.direction == "blocked"
+    assert artifact.kind is bill_dock.FrameKind.INVOICE
+    assert artifact.session_id == 0xFDB1D99B
+    assert artifact.size == 210
+    assert artifact.denomination_cents == 500
+
+
+def test_artifact_inventory_v2_decodes_unknown_orphan_as_blocked():
+    artifact = bill_dock.decode_artifact_metadata(bytes([2, 3]) + bytes(14))
+
+    assert artifact.direction == "blocked"
+    assert artifact.kind is None
+    assert artifact.session_id == 0
+    assert artifact.size == 0
+    assert artifact.denomination_cents == 0
+
+
+def test_artifact_inventory_v1_rejects_blocked_direction():
+    raw = bytes([1, 3]) + bytes(14)
+
+    with pytest.raises(ValueError, match="direction"):
+        bill_dock.decode_artifact_metadata(raw)
+
+
 def test_artifact_inventory_rejects_nonempty_empty_state():
     raw = bytes([1, 0, 1, 0]) + bytes(12)
 

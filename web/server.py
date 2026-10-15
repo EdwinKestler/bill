@@ -230,6 +230,21 @@ def _inspect_registered_bill(
     return connection, artifact
 
 
+def _blocked_inventory_error(artifact: dict[str, Any]) -> RgbWebError:
+    kind = artifact.get("kind")
+    label = "artifact"
+    if kind == int(FrameKind.INVOICE):
+        label = "invoice"
+    elif kind == int(FrameKind.CONSIGNMENT):
+        label = "consignment"
+    return RgbWebError(
+        f"Bill storage recovery is required: a retained {label} could not be handed to the tap service. "
+        "Do not create or send another artifact. Use the explicit chunk-discard recovery, then retry the retained dock action.",
+        retryable=False,
+        broadcast=False,
+    )
+
+
 @_serialized_workflow
 def handle_send_usdt(
     cents: int = 500,
@@ -249,6 +264,8 @@ def handle_send_usdt(
                 broadcast=False,
             )
         _connection, artifact = _inspect_registered_bill(registry)
+        if artifact["direction"] == "blocked":
+            raise _blocked_inventory_error(artifact)
         if artifact["direction"] != "to-dock" or artifact["kind"] != int(
             FrameKind.INVOICE
         ):
@@ -298,6 +315,11 @@ def handle_receive_usdt(
 
     direction = artifact["direction"]
     kind = artifact["kind"]
+    if direction == "blocked":
+        result = _error(_blocked_inventory_error(artifact))
+        result["reply"] = result["error"]
+        result["pending"] = None
+        return result
     if direction == "empty":
         return handle_stage_invoice(cents, selected)
     if direction == "to-dock" and kind == int(FrameKind.CONSIGNMENT):

@@ -71,6 +71,10 @@ is still part of this prototype's trust boundary.
 
 - Invoice BLE failure: select **Receive USDT** again; the service reuses the
   retained invoice instead of creating another one.
+- Bill inventory `recovery-blocked`: do not press Send or Receive again. Run
+  the explicit `chunk-discard` operation for that physical bill, verify
+  `artifact=empty:empty`, then select the same dock action once. The live dock
+  retains a failed invoice stage and does not create another invoice.
 - Confirmation mismatch: correct the phrase. Nothing was broadcast and the
   displayed plan remains pending.
 - Send failure or unknown outcome: the plan is consumed and the UI says to
@@ -102,7 +106,9 @@ is still part of this prototype's trust boundary.
 | `POST /api/rgb/refresh` | A/B | Refresh settlement through the owned wallet |
 | `POST /api/cancel` | A | Discard the web-visible unconfirmed plan |
 
-The web integration is implemented and both role servers pass non-mutating
-live startup/health/balance checks. The first browser-driven broadcast remains
-a separate physical acceptance run; it must retain the exact confirmation
-gate above.
+The web integration and exact confirmation gate were physically accepted on
+both boards on 2026-10-15. The $5 browser-driven transfer settled on Mutinynet
+as transaction
+`1f8953866f24f5b64ec02875aa51507fc6c76777646680eddfb573247cf5d45f`;
+both role wallets refreshed to $50 and both physical inventories returned to
+empty.

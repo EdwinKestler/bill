@@ -153,6 +153,13 @@ bool TapGatt::stageOutbound(uint8_t kind, uint32_t sessionId, size_t size,
     outboundSessionId_ = 0;
     outboundSize_ = 0;
     outboundDenominationCents_ = 0;
+    // The payload was already moved into OUTBOUND_PATH. Fail closed instead
+    // of advertising an empty inventory that could accept a second artifact.
+    storageBlockedByOrphan_ = SPIFFS.exists(OUTBOUND_PATH);
+    if (storageBlockedByOrphan_) {
+      storageReady_ = false;
+    }
+    updateMetadataLocked();
     xSemaphoreGive(mutex_);
     return false;
   }
@@ -184,6 +191,7 @@ void TapGatt::poll() {
   bool armCancelled = false;
   bool armExpired = false;
   bool sessionCancelled = false;
+  bool recoveryPressIgnored = false;
   uint8_t receiverAck[rgbbill::chunk::MAX_FRAME_SIZE] = {};
   size_t receiverAckLength = 0;
   BLERemoteCharacteristic* ackTarget = nullptr;
@@ -202,7 +210,9 @@ void TapGatt::poll() {
   }
   serverWasConnected_ = serverConnected;
 
-  if (pressedEdge) {
+  if (pressedEdge && storageBlockedByOrphan_) {
+    recoveryPressIgnored = true;
+  } else if (pressedEdge) {
     if (receiverConnected_ && !inboundReady_) {
       receiverArm_.cancel();
       stopScan = scanning_;
@@ -218,7 +228,8 @@ void TapGatt::poll() {
       scanning_ = false;
       connectRequested_ = false;
       armCancelled = true;
-    } else if (!outboundReady_ && !outboundActive_ && !inboundReady_ &&
+    } else if (!storageBlockedByOrphan_ && !outboundReady_ &&
+               !outboundActive_ && !inboundReady_ &&
                !receiverConnected_) {
       receiverArm_.arm(now);
       armStarted = true;
@@ -232,7 +243,8 @@ void TapGatt::poll() {
     armExpired = true;
   }
 
-  if (receiverArm_.armed() && !outboundReady_ && !outboundActive_ &&
+  if (receiverArm_.armed() && !storageBlockedByOrphan_ && !outboundReady_ &&
+      !outboundActive_ &&
       !inboundReady_ && !receiverConnected_ && !scanning_ &&
       !connectRequested_) {
     scanning_ = true;
@@ -284,6 +296,10 @@ void TapGatt::poll() {
     Serial.println("tap: receiver session cancelled by second press");
     setStatus("TAP CANCEL");
   }
+  if (recoveryPressIgnored) {
+    Serial.println("tap: input ignored; storage recovery required");
+    setStatus("RECOVERY");
+  }
   if (sendReceiverAck && client_ != nullptr && client_->isConnected() &&
       ackTarget != nullptr) {
     ackTarget->writeValue(receiverAck, receiverAckLength, true);
@@ -309,6 +325,7 @@ void TapGatt::handleAdvertised(BLEAdvertisedDevice& device) {
     return;
   }
   if (!receiverArm_.armed() || !scanning_ || connectRequested_ ||
+      storageBlockedByOrphan_ ||
       outboundReady_ || inboundReady_) {
     xSemaphoreGive(mutex_);
     return;
@@ -815,7 +832,9 @@ bool TapGatt::artifactState(ArtifactState& state) const {
     return false;
   }
   state = ArtifactState{};
-  if (outboundReady_) {
+  if (storageBlockedByOrphan_) {
+    state.direction = 3;
+  } else if (outboundReady_) {
     state.direction = 1;
     state.kind = outboundKind_;
     state.sessionId = outboundSessionId_;
