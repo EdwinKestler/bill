@@ -15,6 +15,7 @@ enum class Kind : uint8_t {
   kInvoice = 0x01,
   kConsignment = 0x02,
   kAck = 0x03,
+  kBearerNote = 0x04,
 };
 
 // These values are also carried as the single ACK payload byte.

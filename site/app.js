@@ -2,59 +2,76 @@
 
 const steps = [
   {
-    source: "INVOICE",
-    channel: "WITNESS RECEIVE",
-    destinationLabel: "DOCK / BILL B",
-    destination: "READY",
-    tag: "START WITH THE RECEIVER",
-    title: "A place for the dollars to land.",
+    source: "5 USDT",
+    sourceLabel: "WALLET A",
+    channel: "RGB FUNDING",
+    destinationLabel: "NOTE WALLET N",
+    destination: "ACTIVE",
+    tag: "THE FIRST REAL RGB TRANSITION",
+    title: "Create one disposable funded note.",
     description:
-      "Dock B creates a witness receive invoice using its independent RGB wallet, then stages it on Bill B. The tap invoice has empty transport endpoints.",
-    detail: "RGB invoice · transport_endpoints = []",
+      "Wallet A sends exactly 5 USDT to an isolated one-use rgb-lib wallet. After Mutinynet confirms the transfer, the note wallet holds the allocation that backs the bearer capability.",
+    detail: "Funding tx · b325cbe4…3963 · 5,000,000 units",
   },
   {
-    source: "INVOICE",
-    channel: "BLE · B → A",
+    source: "CAPSULE",
+    sourceLabel: "NOTE VAULT",
+    channel: "GATT DOCK",
     destinationLabel: "BILL A",
-    destination: "INVOICE",
-    tag: "ONE PRESS, THEN RELEASE",
-    title: "The receiving intent crosses the air.",
+    destination: "$5 NOTE",
+    tag: "NO WALLET KEYS ON THE ESP32",
+    title: "Load a canonical bearer capsule.",
     description:
-      "Press Bill A’s touch input once. A 15-second discovery window finds a nearby bill at RSSI ≥ −60 dBm. The invoice moves from Bill B to Bill A in acknowledged BLE chunks.",
-    detail: "Accepted run · 210 bytes · 2 tap frames",
+      "The trusted note vault emits a compact capability that identifies the funded note and its one-shot redemption authority. The dock verifies and loads the exact artifact onto the starting bill.",
+    detail: "Accepted live capsule · 603 bytes · SHA-256 a3877521…5144",
   },
   {
-    source: "REVIEW",
-    channel: "DOCK A · RGB",
-    destinationLabel: "MUTINYNET",
-    destination: "BROADCAST",
-    tag: "A HUMAN AUTHORIZES THE SPEND",
-    title: "Review the plan. Confirm exactly once.",
-    description:
-      "Dock A retrieves and validates the invoice, then presents the recipient, amount, fees, and expiry. The exact CONFIRM <plan_id> phrase enables one broadcast. An ambiguous send is never retried automatically.",
-    detail: "One-use confirmation · donation=true",
-  },
-  {
-    source: "RGB DATA",
+    source: "$5 NOTE",
+    sourceLabel: "BILL A",
     channel: "BLE · A → B",
     destinationLabel: "BILL B",
-    destination: "RGB DATA",
-    tag: "THE EXACT ARTIFACT, OVER BLE",
-    title: "The consignment follows the invoice.",
+    destination: "$5 NOTE",
+    tag: "DOCKS AND INTERNET ARE OFF",
+    title: "Physical possession moves offline.",
     description:
-      "Dock A stages the consignment produced by rgb-lib on Bill A. Press Bill B once to receive it. Ordered chunks, CRC32 checks, and per-frame ACKs carry the exact bytes to the receiver.",
-    detail: "Accepted run · 12,496 bytes · 70 tap frames",
+      "Press the empty bill once near the current holder. A 15-second high-RSSI window transfers artifact kind 0x04 in acknowledged chunks, promotes it for relay, and restores it after reboot.",
+    detail: "Accepted live relay · session 0x3de6f5e7 · 4 frames",
   },
   {
-    source: "RGB DATA",
-    channel: "DOCK B · IMPORT",
+    source: "CAPSULE",
+    sourceLabel: "BILL B",
+    channel: "GATT DOCK",
     destinationLabel: "WALLET B",
-    destination: "SETTLED",
-    tag: "INDEPENDENT WALLET VALIDATION",
-    title: "Receive, validate, and settle.",
+    destination: "INVOICE",
+    tag: "THE FINAL WALLET IS CHOSEN NOW",
+    title: "Extract exact bytes before planning.",
     description:
-      "Dock B persists and hashes the received artifact before importing it through rgb-lib. Both wallets refresh against Mutinynet until the transfer settles. Artifact staging and import can be recovered without another send.",
-    detail: "Accepted run · A: 80 → 60 · B: 20 → 40 USDT",
+      "The destination dock extracts the capsule, verifies its length and SHA-256, then asks Wallet B for a fresh transport-free invoice. The payer did not need to know Wallet B during the offline handoff.",
+    detail: "Exact extraction · transport_endpoints = []",
+  },
+  {
+    source: "PLAN",
+    sourceLabel: "NOTE WALLET N",
+    channel: "RGB REDEMPTION",
+    destinationLabel: "MUTINYNET",
+    destination: "BROADCAST",
+    tag: "THE SECOND REAL RGB TRANSITION",
+    title: "Confirm one immutable redemption.",
+    description:
+      "The vault prepares an immutable plan tied to the fresh invoice. A human enters its exact confirmation phrase once. The recovery journal records any ambiguous result and never auto-resends.",
+    detail: "Plan 95c33df6…be87 · first redemption wins",
+  },
+  {
+    source: "RGB PROOF",
+    sourceLabel: "NOTE WALLET N",
+    channel: "OOB IMPORT",
+    destinationLabel: "WALLET B",
+    destination: "REDEEMED",
+    tag: "INDEPENDENT RGB VALIDATION",
+    title: "Import the proof and settle.",
+    description:
+      "Wallet B imports the exact rgb-lib consignment and refreshes against Mutinynet. The note is durably marked REDEEMED and replay recovery returns the recorded result without reopening or broadcasting again.",
+    detail: "15,057-byte consignment · Wallet B 50 → 55 USDT",
   },
 ];
 
@@ -70,8 +87,9 @@ function showStep(index, focus = false) {
   });
   panel.setAttribute("aria-labelledby", tabs[selected].id);
   const values = {
-    "flow-counter": `0${selected + 1} / 05`,
+    "flow-counter": `${String(selected + 1).padStart(2, "0")} / ${String(steps.length).padStart(2, "0")}`,
     "flow-source": step.source,
+    "flow-source-label": step.sourceLabel,
     "flow-channel": step.channel,
     "flow-destination-label": step.destinationLabel,
     "flow-destination": step.destination,
@@ -80,13 +98,6 @@ function showStep(index, focus = false) {
     "flow-description": step.description,
     "flow-detail": step.detail,
   };
-  values["flow-source-label"] = [
-    "DOCK / BILL B",
-    "BILL B",
-    "DOCK A",
-    "BILL A",
-    "DOCK B",
-  ][selected];
   for (const [id, value] of Object.entries(values))
     document.getElementById(id).textContent = value;
   document.getElementById("next-step").innerHTML =
@@ -122,21 +133,25 @@ document
 
 const descriptions = {
   "01-system-architecture":
-    "System architecture — two docks, two bills, separate wallets, and Mutinynet settlement.",
+    "System architecture — Wallet A funds a trusted one-use note vault, bills relay its capability offline, and Wallet B redeems later.",
   "02-component-ownership":
-    "Component ownership — firmware, dock radio, web desk, and wallet adapter responsibilities.",
+    "Component ownership — the actual firmware, BLE dock, note-vault, web, and documentation boundaries.",
   "03-rgb-transfer-sequence":
-    "RGB transfer sequence — invoice, confirmation, broadcast, consignment, and settlement.",
+    "RGB transfer sequence — exactly two real transitions around a dockless, internet-free bearer relay.",
   "04-bill-state-machine":
-    "Bill state machine — display and GATT status progression, including failure paths.",
+    "Bill state machine — empty, bearer-held, armed, receiving, extraction, and fail-closed recovery states.",
   "05-gatt-contract":
-    "GATT contract — the frozen dock-core service and implemented tap service.",
+    "GATT contract — inventory metadata v3, bearer artifact kind 0x04, and chunk control/data characteristics.",
   "06-chunk-frame":
-    "Chunk frame — the binary envelope, counters, payload, and CRC32 validation.",
+    "Chunk frame — the acknowledged binary envelope used for invoices, consignments, and bearer capsules.",
   "07-bill-hardware":
-    "Bill hardware — the WEMOS LOLIN32 peripherals and prototype pin assignments.",
+    "Bill hardware — the WEMOS LOLIN32 and TTGO OLED profiles with GPIO12 one-shot touch input.",
   "08-trust-boundaries":
-    "Trust boundaries — wallet secrets, human confirmation, network, and out-of-band constraints.",
+    "Trust boundaries — the online note vault, copyable bearer capability, human confirmation, and exact-byte verification.",
+  "09-live-evidence-timeline":
+    "Live evidence timeline — funded note, offline hardware relay, one-shot redemption, and Wallet B settlement.",
+  "10-note-vault-state":
+    "Note-vault state machine — funded, active, redemption planned, broadcast recorded, imported, and redeemed with recovery edges.",
 };
 document
   .getElementById("diagram-select")

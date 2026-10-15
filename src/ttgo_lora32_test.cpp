@@ -98,6 +98,12 @@ void loop() {
                                    true);
   }
 
+  TapGatt::InboundTransfer bearer;
+  if (tapGatt.peekOutboundTransfer(bearer)) {
+    dockGatt.queueOutboundTransfer(bearer.kind, bearer.sessionId, bearer.path,
+                                   true);
+  }
+
 
   TapGatt::ArtifactState artifact;
   if (tapGatt.artifactState(artifact)) {

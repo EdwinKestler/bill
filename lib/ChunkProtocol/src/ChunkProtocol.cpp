@@ -30,7 +30,8 @@ void writeLe32(uint8_t* output, uint32_t value) {
 bool supportedKind(uint8_t rawKind) {
   return rawKind == static_cast<uint8_t>(Kind::kInvoice) ||
          rawKind == static_cast<uint8_t>(Kind::kConsignment) ||
-         rawKind == static_cast<uint8_t>(Kind::kAck);
+         rawKind == static_cast<uint8_t>(Kind::kAck) ||
+         rawKind == static_cast<uint8_t>(Kind::kBearerNote);
 }
 
 }  // namespace
@@ -109,7 +110,8 @@ ReceiveSession::ReceiveSession(size_t maxTransferBytes)
     : maxTransferBytes_(maxTransferBytes) {}
 
 Result ReceiveSession::accept(const FrameView& frame) {
-  if (frame.kind != Kind::kInvoice && frame.kind != Kind::kConsignment) {
+  if (frame.kind != Kind::kInvoice && frame.kind != Kind::kConsignment &&
+      frame.kind != Kind::kBearerNote) {
     return Result::kUnsupported;
   }
   if (frame.total == 0 || frame.sequence >= frame.total ||

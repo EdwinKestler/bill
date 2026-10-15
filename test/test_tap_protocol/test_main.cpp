@@ -41,9 +41,28 @@ void test_metadata_decodes_legacy_v1_without_denomination() {
   TEST_ASSERT_EQUAL_UINT32(0U, decoded.denominationCents);
 }
 
+void test_metadata_decodes_previous_v2_with_denomination() {
+  std::array<uint8_t, rgbbill::tap::METADATA_SIZE> encoded{};
+  encoded[0] = rgbbill::tap::PREVIOUS_VERSION;
+  encoded[1] = 1;
+  encoded[2] = 2;
+  encoded[4] = 0x21;
+  encoded[8] = 0x78;
+  encoded[12] = 0xF4;
+  encoded[13] = 0x01;
+  rgbbill::tap::Metadata decoded;
+  TEST_ASSERT_TRUE(rgbbill::tap::decodeMetadata(encoded.data(), encoded.size(),
+                                                decoded));
+  TEST_ASSERT_EQUAL_UINT8(rgbbill::tap::PREVIOUS_VERSION, decoded.version);
+  TEST_ASSERT_EQUAL_UINT8(2, decoded.kind);
+  TEST_ASSERT_EQUAL_UINT32(0x21U, decoded.sessionId);
+  TEST_ASSERT_EQUAL_UINT32(0x78U, decoded.size);
+  TEST_ASSERT_EQUAL_UINT32(500U, decoded.denominationCents);
+}
+
 void test_metadata_rejects_bad_version_and_reserved_byte() {
   std::array<uint8_t, rgbbill::tap::METADATA_SIZE> encoded{};
-  encoded[0] = 3;
+  encoded[0] = 4;
   rgbbill::tap::Metadata decoded;
   TEST_ASSERT_FALSE(rgbbill::tap::decodeMetadata(encoded.data(), encoded.size(),
                                                  decoded));
@@ -119,6 +138,7 @@ int main(int, char**) {
   RUN_TEST(test_metadata_round_trip);
   RUN_TEST(test_metadata_rejects_bad_version_and_reserved_byte);
   RUN_TEST(test_metadata_decodes_legacy_v1_without_denomination);
+  RUN_TEST(test_metadata_decodes_previous_v2_with_denomination);
   RUN_TEST(test_gate_emits_one_edge_per_debounced_press);
   RUN_TEST(test_gate_applies_rssi_independently_of_button_level);
   RUN_TEST(test_one_shot_arm_consumes_or_expires_once);

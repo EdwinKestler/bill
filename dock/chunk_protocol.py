@@ -22,6 +22,7 @@ class FrameKind(IntEnum):
     INVOICE = 0x01
     CONSIGNMENT = 0x02
     ACK = 0x03
+    BEARER_NOTE = 0x04
 
 
 class AckStatus(IntEnum):
@@ -119,8 +120,14 @@ def iter_frames(
     session_id: int,
     payload_bytes: int = DEFAULT_PAYLOAD_BYTES,
 ):
-    if kind not in (FrameKind.INVOICE, FrameKind.CONSIGNMENT):
-        raise ChunkProtocolError("only invoice or consignment payloads can be chunked")
+    if kind not in (
+        FrameKind.INVOICE,
+        FrameKind.CONSIGNMENT,
+        FrameKind.BEARER_NOTE,
+    ):
+        raise ChunkProtocolError(
+            "only invoice, consignment, or bearer-note payloads can be chunked"
+        )
     if not payload:
         raise ChunkProtocolError("empty transfers are forbidden")
     if len(payload) > MAX_TRANSFER_BYTES:
@@ -174,7 +181,11 @@ class ChunkReceiver:
         return bytes(self._payload)
 
     def accept(self, frame: ChunkFrame) -> bool:
-        if frame.kind not in (FrameKind.INVOICE, FrameKind.CONSIGNMENT):
+        if frame.kind not in (
+            FrameKind.INVOICE,
+            FrameKind.CONSIGNMENT,
+            FrameKind.BEARER_NOTE,
+        ):
             raise ChunkProtocolError("receiver expected a data frame", AckStatus.UNSUPPORTED)
         if frame.total == 0 or frame.sequence >= frame.total or not frame.payload:
             raise ChunkProtocolError("invalid data frame counters or empty payload")

@@ -94,7 +94,9 @@ void DockGatt::begin() {
         metadata.size == artifactFile.size() &&
         (metadata.kind == static_cast<uint8_t>(rgbbill::chunk::Kind::kInvoice) ||
          metadata.kind ==
-             static_cast<uint8_t>(rgbbill::chunk::Kind::kConsignment));
+             static_cast<uint8_t>(rgbbill::chunk::Kind::kConsignment) ||
+         metadata.kind ==
+             static_cast<uint8_t>(rgbbill::chunk::Kind::kBearerNote));
     if (metadataFile) metadataFile.close();
     if (artifactFile) artifactFile.close();
     if (restored) {
@@ -156,7 +158,7 @@ void DockGatt::begin() {
 
   artifactMetaCharacteristic_ = service->createCharacteristic(
       BLE_UUIDs::ARTIFACT_META, BLECharacteristic::PROPERTY_READ);
-  uint8_t emptyArtifact[16] = {2};
+  uint8_t emptyArtifact[16] = {ArtifactInventory::VERSION};
   artifactMetaCharacteristic_->setValue(emptyArtifact, sizeof(emptyArtifact));
 
   service->start();
@@ -314,7 +316,9 @@ void DockGatt::handleCommand(const std::string& command) {
              &preparedCents) == 2 &&
       (preparedKind == static_cast<unsigned>(rgbbill::chunk::Kind::kInvoice) ||
        preparedKind ==
-           static_cast<unsigned>(rgbbill::chunk::Kind::kConsignment)) &&
+           static_cast<unsigned>(rgbbill::chunk::Kind::kConsignment) ||
+       preparedKind ==
+           static_cast<unsigned>(rgbbill::chunk::Kind::kBearerNote)) &&
       preparedCents > 0) {
     if (chunkMutex_ != nullptr &&
         xSemaphoreTake(chunkMutex_, portMAX_DELAY) == pdTRUE) {
@@ -568,7 +572,8 @@ bool DockGatt::queueOutboundLocked(rgbbill::chunk::Kind kind,
                                    bool removeAfterSend) {
   if (!storageReady_ || outboundActive_ || path == nullptr ||
       (kind != rgbbill::chunk::Kind::kInvoice &&
-       kind != rgbbill::chunk::Kind::kConsignment)) {
+       kind != rgbbill::chunk::Kind::kConsignment &&
+       kind != rgbbill::chunk::Kind::kBearerNote)) {
     return false;
   }
 
@@ -723,7 +728,14 @@ bool DockGatt::moveInboundTransfer(InboundTransfer& transfer,
 void DockGatt::setArtifactState(uint8_t direction, uint8_t kind,
                                 uint32_t sessionId, size_t size,
                                 uint32_t denominationCents) {
-  if (artifactMetaCharacteristic_ == nullptr || direction > 3 || kind > 2) {
+  const bool validDirection = direction <= 4;
+  const bool validKind = kind == 0 || kind == 1 || kind == 2 || kind == 4;
+  const bool validBearerState =
+      (direction != ArtifactInventory::BEARER_HELD || kind == 4) &&
+      (kind != 4 || direction == ArtifactInventory::BEARER_HELD ||
+       direction == ArtifactInventory::RECOVERY_BLOCKED);
+  if (artifactMetaCharacteristic_ == nullptr || !validDirection ||
+      !validKind || !validBearerState) {
     return;
   }
   if (direction == artifactDirection_ && kind == artifactKind_ &&
@@ -737,7 +749,7 @@ void DockGatt::setArtifactState(uint8_t direction, uint8_t kind,
   artifactSize_ = size;
   artifactDenominationCents_ = denominationCents;
 
-  uint8_t encoded[16] = {2, direction, kind, 0};
+  uint8_t encoded[16] = {ArtifactInventory::VERSION, direction, kind, 0};
   writeLe32(encoded + 4, sessionId);
   writeLe32(encoded + 8, static_cast<uint32_t>(size));
   writeLe32(encoded + 12, denominationCents);
@@ -746,6 +758,7 @@ void DockGatt::setArtifactState(uint8_t direction, uint8_t kind,
   const char* status = direction == 0   ? "idle"
                        : direction == 1 ? "tap"
                        : direction == 2 ? "pending"
+                       : direction == 4 ? "tap"
                                         : "error";
   const char* display = "EMPTY";
   if (direction == 1 && kind == 1) display = "INVOICE TAP";
@@ -753,6 +766,10 @@ void DockGatt::setArtifactState(uint8_t direction, uint8_t kind,
   if (direction == 1 && kind == 2) display = "PROOF TAP";
   if (direction == 2 && kind == 2) display = "PROOF DOCK";
   if (direction == 3) display = kind == 0 ? "CLEAR STORAGE" : "RECOVERY";
+  if (direction == ArtifactInventory::BEARER_HELD &&
+      kind == static_cast<uint8_t>(rgbbill::chunk::Kind::kBearerNote)) {
+    display = "NOTE";
+  }
   setState(direction == 0 || (direction == 3 && kind == 0)
                ? 0
                : denominationCents,

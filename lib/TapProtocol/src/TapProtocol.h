@@ -5,7 +5,8 @@
 
 namespace rgbbill::tap {
 
-constexpr uint8_t VERSION = 0x02;
+constexpr uint8_t VERSION = 0x03;
+constexpr uint8_t PREVIOUS_VERSION = 0x02;
 constexpr uint8_t LEGACY_VERSION = 0x01;
 constexpr size_t LEGACY_METADATA_SIZE = 12;
 constexpr size_t METADATA_SIZE = 16;
@@ -31,6 +32,8 @@ struct Metadata {
   uint32_t size = 0;
   uint32_t denominationCents = 0;
 };
+
+bool isSupportedVersion(uint8_t version, size_t length);
 
 bool encodeMetadata(const Metadata& metadata, uint8_t* output,
                     size_t capacity);

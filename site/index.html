@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#111814" />
     <meta
       name="description"
-      content="RGB cash bill: a physical digital-dollar prototype. Two ESP32 bills exchange RGB invoices and consignments over Bluetooth, with settlement on Bitcoin Mutinynet."
+      content="RGB cash bill: a verified Mutinynet prototype that funds a disposable RGB note, relays its bearer capability offline between ESP32 bills, and redeems into a later-selected wallet."
     />
     <meta property="og:type" content="website" />
     <meta
@@ -15,7 +15,7 @@
     />
     <meta
       property="og:description"
-      content="Two bills. Two independent wallets. One tap. Explore the working ESP32 + RGB prototype and its verified Mutinynet transfer."
+      content="Two real RGB transitions around a dock-free BLE handoff. Explore the verified ESP32 bearer-note prototype, evidence, and honest trust boundaries."
     />
     <title>RGB cash bill — Digital dollars. A physical gesture.</title>
     <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
@@ -52,9 +52,9 @@
             Digital dollars.<br />A physical<br /><em>gesture.</em>
           </h1>
           <p class="hero-description">
-            What if a digital dollar felt like handing over cash? Two small
-            devices, independent RGB wallets, and a tap that carries the
-            transfer between them.
+            A dock funds a disposable $5 RGB note. A small ESP32 bill carries
+            its bearer capability offline. The final holder later redeems into
+            a wallet that did not exist in the original transfer plan.
           </p>
           <div class="hero-actions">
             <a class="button primary" href="#how-it-works"
@@ -119,8 +119,8 @@
 
       <div class="principle-strip">
         <div class="wrap">
-          <span>A cash-like interaction</span><span>Independent wallets</span
-          ><span>Client-side RGB validation</span
+          <span>A cash-like handoff</span><span>Offline BLE relay</span
+          ><span>Two real RGB transitions</span
           ><span>Bitcoin settlement</span>
         </div>
       </div>
@@ -132,35 +132,35 @@
             A familiar gesture.<br />A different kind of money.
           </h2>
           <p class="section-copy">
-            RGB cash bill explores physical digital dollars: a bill shows an
-            amount, another bill receives it, and the docks manage the wallets
-            behind the scenes. The goal is a transfer that feels tangible,
-            without a QR code or a phone app at the tap.
+            RGB cash bill explores a digital note that can leave its original
+            dock. The physical handoff works without a phone, QR code, dock, or
+            Internet. Funding and eventual redemption remain real RGB
+            transitions settled later on Mutinynet.
           </p>
         </div>
         <div class="intro-details">
           <article>
             <span class="detail-symbol" aria-hidden="true">↔</span>
-            <h3>Local exchange</h3>
+            <h3>Offline possession</h3>
             <p>
-              The invoice and exact consignment travel through Bluetooth between
-              the bills.
+              A 603-byte bearer capability moves between bills through
+              acknowledged BLE chunks and survives a reboot.
             </p>
           </article>
           <article>
             <span class="detail-symbol" aria-hidden="true">◎</span>
-            <h3>Independent custody</h3>
+            <h3>Unknown final wallet</h3>
             <p>
-              Each bill has its own wallet, opened by its dock. The ESP32
-              handles the display and radio.
+              Wallet B creates its invoice only at redemption. It was not known
+              when Wallet A funded the disposable note.
             </p>
           </article>
           <article>
             <span class="detail-symbol" aria-hidden="true">✓</span>
-            <h3>Intent before action</h3>
+            <h3>Exact authorization</h3>
             <p>
-              A press arms discovery. An exact, one-use confirmation authorizes
-              the spend on the dock.
+              Each spend has a separate immutable plan and exact one-use human
+              confirmation. Unknown outcomes never retry automatically.
             </p>
           </article>
         </div>
@@ -199,8 +199,8 @@
               >
                 <span class="step-number">01</span
                 ><span
-                  ><strong>Prepare a receive</strong
-                  ><small>Dock B creates the RGB invoice</small></span
+                  ><strong>Fund a disposable note</strong
+                  ><small>Wallet A → note wallet N</small></span
                 ><span class="step-arrow" aria-hidden="true">↗</span>
               </button>
               <button
@@ -214,8 +214,8 @@
               >
                 <span class="step-number">02</span
                 ><span
-                  ><strong>Tap for the invoice</strong
-                  ><small>Bill B → Bill A, over BLE</small></span
+                  ><strong>Load the physical bill</strong
+                  ><small>603-byte capsule, no wallet keys</small></span
                 ><span class="step-arrow" aria-hidden="true">↗</span>
               </button>
               <button
@@ -229,8 +229,8 @@
               >
                 <span class="step-number">03</span
                 ><span
-                  ><strong>Review &amp; confirm</strong
-                  ><small>Dock A broadcasts once</small></span
+                  ><strong>Pass it offline</strong
+                  ><small>Bill A → Bill B, over BLE</small></span
                 ><span class="step-arrow" aria-hidden="true">↗</span>
               </button>
               <button
@@ -244,8 +244,8 @@
               >
                 <span class="step-number">04</span
                 ><span
-                  ><strong>Tap for the consignment</strong
-                  ><small>Bill A → Bill B, over BLE</small></span
+                  ><strong>Extract &amp; choose Wallet B</strong
+                  ><small>The final wallet was unknown before</small></span
                 ><span class="step-arrow" aria-hidden="true">↗</span>
               </button>
               <button
@@ -259,8 +259,23 @@
               >
                 <span class="step-number">05</span
                 ><span
-                  ><strong>Validate &amp; settle</strong
-                  ><small>Dock B imports; both wallets refresh</small></span
+                  ><strong>Confirm one redemption</strong
+                  ><small>Note N broadcasts once</small></span
+                ><span class="step-arrow" aria-hidden="true">↗</span>
+              </button>
+              <button
+                id="step-6"
+                class="flow-step"
+                role="tab"
+                aria-selected="false"
+                aria-controls="flow-panel"
+                tabindex="-1"
+                data-step="5"
+              >
+                <span class="step-number">06</span
+                ><span
+                  ><strong>Import &amp; settle</strong
+                  ><small>Wallet B verifies the exact $5 delta</small></span
                 ><span class="step-arrow" aria-hidden="true">↗</span>
               </button>
             </div>
@@ -273,32 +288,32 @@
             >
               <div class="panel-top">
                 <span>TRANSFER EXPLAINER</span
-                ><span id="flow-counter">01 / 05</span>
+                ><span id="flow-counter">01 / 06</span>
               </div>
               <div class="transfer-visual" aria-hidden="true">
                 <div class="mini-device">
-                  <span id="flow-source-label">DOCK / BILL B</span
-                  ><b id="flow-source">INVOICE</b><i></i>
+                  <span id="flow-source-label">WALLET A</span
+                  ><b id="flow-source">5 USDT</b><i></i>
                 </div>
                 <div class="transfer-wire">
-                  <span id="flow-channel">WITNESS RECEIVE</span>
+                  <span id="flow-channel">RGB FUNDING</span>
                   <div>→</div>
                 </div>
                 <div class="mini-device destination">
-                  <span id="flow-destination-label">DOCK / BILL B</span
-                  ><b id="flow-destination">READY</b><i></i>
+                  <span id="flow-destination-label">NOTE WALLET N</span
+                  ><b id="flow-destination">ACTIVE</b><i></i>
                 </div>
               </div>
-              <p id="flow-tag" class="panel-tag">START WITH THE RECEIVER</p>
-              <h3 id="flow-subtitle">A place for the dollars to land.</h3>
+              <p id="flow-tag" class="panel-tag">FIRST REAL RGB TRANSITION</p>
+              <h3 id="flow-subtitle">Create one funded disposable note.</h3>
               <p id="flow-description">
-                Dock B creates a witness receive invoice using its independent
-                RGB wallet, then stages it on Bill B. The tap invoice has empty
-                transport endpoints.
+                Wallet A funds fresh note wallet N with exactly 5 USDT through
+                a transport-free invoice. The note becomes active only after
+                its exact receive transfer settles.
               </p>
               <div class="panel-footer">
                 <span id="flow-detail"
-                  >RGB invoice · transport_endpoints = []</span
+                  >Funding tx · one exact confirmation · 5,000,000 units</span
                 ><button id="next-step" class="text-button">
                   Next step <span aria-hidden="true">→</span>
                 </button>
@@ -306,16 +321,16 @@
             </div>
           </div>
           <p class="flow-note">
-            Interactive illustration. The physical prototype uses a
-            press-and-release input, a 15-second discovery window, and an RSSI
-            gate. The dock requires confirmation before broadcasting.
+            Interactive illustration. Only steps 1 and 5 are RGB broadcasts.
+            Step 3 is a dock-free bearer-capability handoff over BLE. The vault
+            retains note wallet N's keys in this Mutinynet prototype.
           </p>
           <noscript
             ><p class="flow-note">
-              The five steps are: prepare the receiving invoice; tap to move it
-              to the sender; review and confirm on Dock A; tap to move the
-              consignment to Bill B; import and settle on Dock B. Enable
-              JavaScript to explore each step.
+              The six steps are: fund note N; load the capsule; pass it offline;
+              extract it and choose Wallet B; confirm one redemption; import
+              and settle the exact $5 assignment. Enable JavaScript to explore
+              each step.
             </p></noscript
           >
         </div>
@@ -338,25 +353,25 @@
         <div class="hardware-grid">
           <article class="hardware-card">
             <div class="hardware-top">
-              <span class="eyebrow">BILL A / SENDER IN THE ACCEPTED RUN</span
-              ><span class="hardware-index">A</span>
+              <span class="eyebrow">DESTINATION BILL / ACCEPTED LIVE RELAY</span
+              ><span class="hardware-index">B</span>
             </div>
             <div class="board-illustration board-ttgo" aria-hidden="true">
               <div class="board-pins"></div>
               <span class="board-chip">ESP32</span
-              ><span class="board-screen">RGB<br /><b>$20.00</b></span
+              ><span class="board-screen">NOTE<br /><b>$5.00</b></span
               ><span class="board-usb"></span>
             </div>
             <h3>LilyGO TTGO LoRa32</h3>
             <p>
-              V1.3 board with an external ILI9341 color display. The original
-              OLED stayed dark through diagnostics; the TFT became the display
-              path.
+              V1.3 board with a replacement external SSD1306 OLED. It received
+              the live capsule over BLE, promoted it for relay, and restored
+              the same metadata after reboot.
             </p>
             <dl>
               <div>
                 <dt>Display</dt>
-                <dd>240 × 320 SPI TFT</dd>
+                <dd>128 × 64 I²C OLED · GPIO21/22</dd>
               </div>
               <div>
                 <dt>Touch input</dt>
@@ -370,13 +385,13 @@
           </article>
           <article class="hardware-card">
             <div class="hardware-top">
-              <span class="eyebrow">BILL B / RECEIVER IN THE ACCEPTED RUN</span
-              ><span class="hardware-index">B</span>
+              <span class="eyebrow">STARTING BILL / ACCEPTED LIVE RELAY</span
+              ><span class="hardware-index">A</span>
             </div>
             <div class="board-illustration board-lolin" aria-hidden="true">
               <div class="board-pins"></div>
               <span class="board-chip">ESP32</span
-              ><span class="board-screen">RGB<br /><b>$0.00</b></span
+              ><span class="board-screen">NOTE<br /><b>$5.00</b></span
               ><span class="board-usb"></span>
             </div>
             <h3>WEMOS LOLIN32</h3>
@@ -406,8 +421,10 @@
             <h3>The brains stay on the dock.</h3>
             <p>
               Python + Bleak connect to the bill. rgb-lib opens one isolated
-              wallet per role. The local web desk handles planning, exact
-              confirmation, artifact recovery, and settlement refresh.
+              wallet per role. The direct-transfer flow has a local web desk;
+              the accepted bearer-note lifecycle currently uses the guarded
+              operator CLI for planning, exact confirmation, recovery, and
+              settlement refresh.
             </p>
           </div>
           <a
@@ -422,25 +439,25 @@
         <div class="wrap">
           <div class="section-heading">
             <div>
-              <p class="eyebrow section-number">04 / BEYOND THE FIXTURE</p>
-              <h2>One transfer.<br />Verified end to end.</h2>
+              <p class="eyebrow section-number">04 / LIVE BEARER PROOF</p>
+              <h2>Two RGB moves.<br />One offline handoff.</h2>
             </div>
             <span class="verified-label"
               ><span class="live-dot" aria-hidden="true"></span> LIVE ACCEPTED /
-              11 OCT 2026</span
+              15 OCT 2026</span
             >
           </div>
           <div class="proof-grid">
             <div class="proof-feature">
-              <span class="eyebrow">CONTROLLED MUTINYNET RUN</span>
-              <p class="proof-amount">20 <span>USDT</span></p>
+              <span class="eyebrow">CONTROLLED MUTINYNET BEARER RUN</span>
+              <p class="proof-amount">5 <span>USDT</span></p>
               <p>
-                Test asset transferred between two independent wallets, using a
-                real invoice and the exact RGB consignment over BLE.
+                Wallet A funded note wallet N. Its capability crossed WEMOS →
+                TTGO without a dock or network. N then redeemed into Wallet B.
               </p>
               <div class="balance-row">
-                <span>Wallet A <b>80 → 60</b></span
-                ><span>Wallet B <b>20 → 40</b></span>
+                <span>Note N <b>0 → 5 → 0</b></span
+                ><span>Wallet B <b>50 → 55</b></span>
               </div>
               <span class="proof-test-label"
                 >TEST NETWORK · NO REAL DOLLAR VALUE</span
@@ -448,44 +465,81 @@
             </div>
             <div class="proof-metrics">
               <article>
-                <span class="metric-value">12,496 <small>bytes</small></span>
-                <h3>Exact consignment</h3>
-                <p>The generated and received artifact hashes matched.</p>
+                <span class="metric-value">603 <small>bytes</small></span>
+                <h3>Offline bearer capsule</h3>
+                <p>Source and destination SHA-256 matched after physical relay.</p>
               </article>
               <article>
-                <span class="metric-value">70 <small>frames</small></span>
-                <h3>Bill-to-bill transport</h3>
-                <p>Chunked BLE transfer with per-frame acknowledgements.</p>
+                <span class="metric-value">4 <small>frames</small></span>
+                <h3>Bill-to-bill relay</h3>
+                <p>Kind 0x04 moved over BLE and restored after TTGO reboot.</p>
               </article>
               <article>
-                <span class="metric-value">1 <small>broadcast</small></span>
-                <h3>Confirmed once</h3>
-                <p>Recovery after indexer timeouts did not repeat the send.</p>
+                <span class="metric-value">2 <small>RGB txs</small></span>
+                <h3>Real funding + redemption</h3>
+                <p>The offline middle hop is not misrepresented as an RGB transition.</p>
               </article>
               <article>
-                <span class="metric-value">2 <small>wallets</small></span>
-                <h3>Independently settled</h3>
+                <span class="metric-value">15,057 <small>bytes</small></span>
+                <h3>Exact redemption proof</h3>
                 <p>
-                  Both wallets refreshed to SETTLED and both bills resumed
-                  advertising.
+                  Wallet B imported the retained consignment and verified one
+                  exact 5,000,000-unit assignment.
                 </p>
               </article>
             </div>
           </div>
           <div class="transaction">
-            <span class="eyebrow">MUTINYNET TRANSACTION</span
+            <span class="eyebrow">RGB FUNDING TRANSACTION</span
             ><a
-              href="https://mutinynet.com/tx/97885ddffc2305aabf1574d78be8cf102d0afb1f104529c817fc4dcff541a1fb"
+              href="https://mutinynet.com/tx/b325cbe40c282e661c40ff8555cb6cb0fc9867a32855feb8b17d7756c9a83963"
               ><code
-                >97885ddffc2305aabf1574d78be8cf102d0afb1f104529c817fc4dcff541a1fb</code
+                >b325cbe40c282e661c40ff8555cb6cb0fc9867a32855feb8b17d7756c9a83963</code
+              ><span aria-hidden="true">↗</span></a
+            >
+          </div>
+          <div class="transaction">
+            <span class="eyebrow">RGB REDEMPTION TRANSACTION</span
+            ><a
+              href="https://mutinynet.com/tx/dfe138b0983f6238103d2e5c57bf0848fdd5b7fd733162299fb4c6e5e9f427bf"
+              ><code
+                >dfe138b0983f6238103d2e5c57bf0848fdd5b7fd733162299fb4c6e5e9f427bf</code
               ><span aria-hidden="true">↗</span></a
             >
           </div>
           <a
             class="text-link"
-            href="https://github.com/EdwinKestler/bill/blob/main/docs/RGB-TAP-LIVE.md"
+            href="https://github.com/EdwinKestler/bill/blob/main/docs/LIVE-EVIDENCE.md"
             >Read the acceptance evidence <span aria-hidden="true">↗</span></a
           >
+        </div>
+      </section>
+
+      <section class="intro wrap section" aria-labelledby="limits-title">
+        <p class="eyebrow section-number">05 / HONEST BOUNDARIES</p>
+        <div>
+          <h2 id="limits-title">A working prototype.<br />Not magic cash.</h2>
+          <p class="section-copy">
+            The offline experience is real, but its trust assumptions are part
+            of the result—not footnotes hidden from the demo.
+          </p>
+        </div>
+        <div class="intro-details">
+          <article>
+            <span class="detail-symbol" aria-hidden="true">⌂</span>
+            <h3>Trusted vault</h3>
+            <p>The vault retains note wallet N's keys and can censor or spend an active note.</p>
+          </article>
+          <article>
+            <span class="detail-symbol" aria-hidden="true">⧉</span>
+            <h3>Copy risk</h3>
+            <p>A copied capsule is first-redemption-wins. Offline double spending is detected later, not prevented.</p>
+          </article>
+          <article>
+            <span class="detail-symbol" aria-hidden="true">△</span>
+            <h3>Still to integrate</h3>
+            <p>QVAC local inference works, but action routing is open. WDK is not integrated. Mutinynet has no real dollar value.</p>
+          </article>
         </div>
       </section>
 
@@ -496,7 +550,7 @@
       >
         <div class="section-heading">
           <div>
-            <p class="eyebrow section-number">05 / UNDER THE SURFACE</p>
+            <p class="eyebrow section-number">06 / UNDER THE SURFACE</p>
             <h2 id="architecture-title">Open by design.</h2>
           </div>
           <p class="section-copy">
@@ -518,6 +572,12 @@
             <option value="07-bill-hardware">Bill hardware</option>
             <option value="08-trust-boundaries">
               Trust boundaries
+            </option>
+            <option value="09-live-evidence-timeline">
+              Live evidence timeline
+            </option>
+            <option value="10-note-vault-state">
+              Note-vault state machine
             </option></select
           ><a
             id="diagram-full"
@@ -534,12 +594,12 @@
             src="assets/diagrams/01-system-architecture.png"
             width="2800"
             height="622"
-            alt="System architecture diagram showing two independent docks, two ESP32 bills, BLE transport, and Mutinynet settlement."
+            alt="System architecture diagram showing Wallet A, the trusted disposable-note vault, two ESP32 bills, Wallet B, BLE transport, and Mutinynet settlement."
             loading="lazy"
           />
           <figcaption id="diagram-caption">
-            System architecture — two docks, two bills, separate wallets, and
-            Mutinynet settlement.
+            System architecture — two real RGB transitions around a dock-free
+            physical bearer-capability relay.
           </figcaption>
         </figure>
         <div class="doc-links">
@@ -550,8 +610,14 @@
             href="https://github.com/EdwinKestler/bill/blob/main/docs/PROTOCOL.md"
             ><span>BLE services &amp; frames</span><b>GATT contract ↗</b></a
           ><a
-            href="https://github.com/EdwinKestler/bill/blob/main/docs/WEB-RGB-TEST.md"
-            ><span>Run the two-dock flow</span><b>Web acceptance guide ↗</b></a
+            href="https://github.com/EdwinKestler/bill/blob/main/docs/OFFLINE-BEARER-RUNBOOK.md"
+            ><span>Run the accepted bearer flow</span><b>Operator runbook ↗</b></a
+          ><a
+            href="https://github.com/EdwinKestler/bill/blob/main/docs/LIVE-EVIDENCE.md"
+            ><span>Inspect txids and hashes</span><b>Live evidence ↗</b></a
+          ><a
+            href="https://github.com/EdwinKestler/bill/blob/main/docs/THREAT-MODEL.md"
+            ><span>Understand trust and risk</span><b>Threat model ↗</b></a
           >
         </div>
       </section>
@@ -559,11 +625,12 @@
       <section class="roadmap-section section">
         <div class="wrap roadmap-layout">
           <div>
-            <p class="eyebrow section-number">06 / WHERE WE ARE</p>
+            <p class="eyebrow section-number">07 / WHERE WE ARE</p>
             <h2>Working prototype.<br />More to build.</h2>
             <p class="section-copy">
-              The physical and browser-driven transfer has been accepted. The
-              next step is connecting local QVAC intent to that safe flow.
+              Direct mode and the offline bearer-note round trip are accepted.
+              The next product gate is a human-first bearer web flow, followed
+              by measured local QVAC intent routing.
             </p>
           </div>
           <ol class="roadmap">
@@ -601,12 +668,23 @@
               <span class="status-label">VERIFIED</span>
             </li>
             <li>
+              <span class="roadmap-dot done" aria-hidden="true">✓</span>
+              <div>
+                <h3>Offline bearer-note round trip</h3>
+                <p>
+                  Disposable note funding, physical relay, exact extraction,
+                  one-shot redemption, and Wallet B settlement passed live.
+                </p>
+              </div>
+              <span class="status-label">VERIFIED</span>
+            </li>
+            <li>
               <span class="roadmap-dot current" aria-hidden="true">↗</span>
               <div>
-                <h3>QVAC voice intent</h3>
+                <h3>Bearer web flow + QVAC intent</h3>
                 <p>
-                  Local SDK and model inference are verified. Connect “print a
-                  five” to the deterministic, confirmation-gated action flow.
+                  Expose the accepted operator sequence without weakening its
+                  gates, then measure local typed intent and safe recovery help.
                 </p>
               </div>
               <span class="status-label current">NEXT GATE</span>

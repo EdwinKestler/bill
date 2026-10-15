@@ -95,10 +95,57 @@ def test_blocked_dock_artifact_is_never_reported_empty():
     assert "peekInboundTransfer(InboundTransfer& transfer) const" in dock_header
     assert "dockGatt.peekInboundTransfer(retained)" in main
     assert "dockGatt.setArtifactState(3" in main
-    assert "uint8_t encoded[16] = {2, direction, kind, 0}" in dock_source
+    assert (
+        "uint8_t encoded[16] = {ArtifactInventory::VERSION, direction, kind, 0}"
+        in dock_source
+    )
     assert "storageBlockedByOrphan_" in tap_source
     assert 'state.direction = 3' in tap_source
     assert 'tap: input ignored; storage recovery required' in tap_source
+
+
+def test_bearer_note_v3_is_relayed_without_a_dock():
+    chunk_header = (
+        ROOT / "lib" / "ChunkProtocol" / "src" / "ChunkProtocol.h"
+    ).read_text(encoding="utf-8")
+    tap_header = (
+        ROOT / "lib" / "TapProtocol" / "src" / "TapProtocol.h"
+    ).read_text(encoding="utf-8")
+    tap_source = (
+        ROOT / "lib" / "TapGatt" / "src" / "TapGatt.cpp"
+    ).read_text(encoding="utf-8")
+    dock_source = (
+        ROOT / "lib" / "DockGatt" / "src" / "DockGatt.cpp"
+    ).read_text(encoding="utf-8")
+
+    assert "kBearerNote = 0x04" in chunk_header
+    assert "constexpr uint8_t VERSION = 0x03" in tap_header
+    assert "constexpr uint8_t PREVIOUS_VERSION = 0x02" in tap_header
+    assert "promoteInboundBearerLocked" in tap_source
+    assert 'state.direction =\n' in tap_source
+    assert '? 4' in tap_source
+    assert 'display = "NOTE"' in dock_source
+    assert '? "NOTE"' in tap_source
+    assert 'wasBearer ? "EMPTY" : "TAP SENT"' in tap_source
+
+
+def test_bearer_note_can_be_extracted_by_dock_after_final_ack():
+    main = (ROOT / "src" / "main.cpp").read_text(encoding="utf-8")
+    ttgo = (ROOT / "src" / "ttgo_lora32_test.cpp").read_text(
+        encoding="utf-8"
+    )
+    tap_header = (
+        ROOT / "lib" / "TapGatt" / "src" / "TapGatt.h"
+    ).read_text(encoding="utf-8")
+    tap_source = (
+        ROOT / "lib" / "TapGatt" / "src" / "TapGatt.cpp"
+    ).read_text(encoding="utf-8")
+
+    assert "peekOutboundTransfer(InboundTransfer& transfer)" in tap_header
+    assert "bool TapGatt::peekOutboundTransfer" in tap_source
+    assert "DockGatt deletes the file only after the laptop ACKs" in tap_source
+    assert "dockGatt.queueOutboundTransfer(bearer.kind" in main
+    assert "dockGatt.queueOutboundTransfer(bearer.kind" in ttgo
 
 
 def test_ttgo_external_ili9341_profile_remains_legacy_rollback():

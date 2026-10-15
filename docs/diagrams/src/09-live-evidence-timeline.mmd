@@ -1,0 +1,17 @@
+flowchart LR
+    classDef rgb fill:#dcfce7,stroke:#16803a,color:#12351f,stroke-width:2px
+    classDef physical fill:#dbeafe,stroke:#2563eb,color:#172554,stroke-width:2px
+    classDef bitcoin fill:#f1f5f9,stroke:#64748b,color:#1e293b,stroke-width:2px
+    classDef final fill:#fef3c7,stroke:#d97706,color:#4a2b05,stroke-width:2px
+
+    a["Wallet A | 5 USDT funding plan"]:::rgb
+    ftx["Funding tx b325…3963 | block 3508184"]:::bitcoin
+    n["Note N ACTIVE | 5,000,000 settled"]:::rgb
+    cap["Capsule 603 bytes | SHA a387…5144"]:::physical
+    relay["WEMOS to TTGO | session 3de6f5e7 | 4 frames | reboot restore"]:::physical
+    capacity["Capacity tx 089a…34bb | free 8,000-sat colorable UTXO"]:::bitcoin
+    rtx["Redemption tx dfe1…27bf | block 3508531"]:::bitcoin
+    b["Wallet B | exact 5,000,000 assignment | 50 to 55 USDT"]:::rgb
+    done["REDEEMED | claim SPENT | refresh replay no send"]:::final
+
+    a --> ftx --> n --> cap --> relay --> capacity --> rtx --> b --> done

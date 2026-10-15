@@ -40,7 +40,7 @@ Do not copy locker UUIDs, `0xA4`, barcodes, or relays.
 
 **Dock radio:** `ideas/bill/.venv` + Bleak. `python -m dock.bill_dock scan`.
 **Dock web:** `python -m web.server` (http://127.0.0.1:8788/). Python is the
-weekend dock language. `web/rust/` is optional rgb-lib native, not a second
+delivery dock language. `web/rust/` is optional rgb-lib native, not a second
 wallet process.
 **QVAC:** `./install_qvac.sh` fat wheel in `.venv`. Cache `.qvac/`. Instruct
 model `QWEN3_600M_INST_Q4` (`python scripts/qvac_fetch_instruct.py`). Smoke
@@ -52,5 +52,5 @@ human asks. Do not use mainnet seeds.
 Skills: `ideas/bill/.agents/skills/bill-firmware/SKILL.md`,
 `bill-dock/SKILL.md`, `source-cache/SKILL.md`.
 
-OpenAI 5.6 bring-up (test env + Palimnex, no new features):
+OpenAI 5.6 active delivery prompt (test baseline + Palimnex + implementation):
 `ideas/bill/docs/agents-prompt-openai-56.md`.

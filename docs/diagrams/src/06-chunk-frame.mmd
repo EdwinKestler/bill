@@ -4,12 +4,12 @@ flowchart TB
     classDef checksum fill:#fef3c7,stroke:#d97706,color:#4a2b05,stroke-width:2px
     classDef rule fill:#f1f5f9,stroke:#64748b,color:#1e293b,stroke-width:2px
 
-    build["Sender splits exact invoice or consignment bytes"]:::rule
+    build["Sender splits exact invoice consignment or bearer-capsule bytes"]:::rule
 
     subgraph frame["Binary frame v1 | little-endian | maximum 216 bytes"]
         direction LR
         version["version | 1 byte | 0x01"]:::header
-        kind["kind | 1 byte | invoice 01 consignment 02 ACK 03"]:::header
+        kind["kind | 1 byte | invoice 01 consignment 02 ACK 03 bearer 04"]:::header
         session["session_id | 4 bytes | random per transfer"]:::header
         sequence["sequence | 2 bytes | zero-based index"]:::header
         total["total | 2 bytes | total frame count"]:::header

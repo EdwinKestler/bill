@@ -237,6 +237,8 @@ def _blocked_inventory_error(artifact: dict[str, Any]) -> RgbWebError:
         label = "invoice"
     elif kind == int(FrameKind.CONSIGNMENT):
         label = "consignment"
+    elif kind == int(FrameKind.BEARER_NOTE):
+        label = "bearer note"
     return RgbWebError(
         f"Bill storage recovery is required: a retained {label} could not be handed to the tap service. "
         "Do not create or send another artifact. Use the explicit chunk-discard recovery, then retry the retained dock action.",

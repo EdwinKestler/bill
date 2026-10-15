@@ -940,7 +940,7 @@ dd {
 }
 .doc-links {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   margin-top: 22px;
   gap: 20px;
 }
@@ -1177,7 +1177,7 @@ dd {
   }
   .flow-steps {
     display: grid;
-    grid-template-columns: repeat(5, 1fr);
+    grid-template-columns: repeat(6, 1fr);
     border: 1px solid var(--border);
     border-radius: 5px;
   }
@@ -1269,6 +1269,7 @@ dd {
     margin-left: auto;
   }
   .doc-links {
+    grid-template-columns: repeat(2, 1fr);
     gap: 10px;
   }
   .doc-links > a {

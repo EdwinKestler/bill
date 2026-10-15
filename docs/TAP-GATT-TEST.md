@@ -162,9 +162,11 @@ Both physical directions passed with the inert fixture and no receiver reset:
   `tap: receive complete`; both receivers became discoverable again without a
   reset.
 
-This accepts the opaque GATT-dock → GATT-tap → GATT-dock transport. It does
-not yet prove live rgb-lib invoice parsing, OOB consignment import, or
-Mutinynet settlement.
+This test accepts the opaque GATT-dock → GATT-tap → GATT-dock transport. By
+itself it does not prove live rgb-lib invoice parsing, OOB consignment import,
+or Mutinynet settlement. Those separate live acceptance results are recorded
+in [LIVE-EVIDENCE.md](LIVE-EVIDENCE.md); they must not be inferred from this
+fixture test alone.
 
 ## Failure behavior
 

@@ -3,56 +3,55 @@ flowchart LR
     classDef implemented fill:#dbeafe,stroke:#2563eb,color:#172554,stroke-width:2px
     classDef planned fill:#fef3c7,stroke:#d97706,color:#4a2b05,stroke-width:2px,stroke-dasharray:6 4
     classDef external fill:#f1f5f9,stroke:#64748b,color:#1e293b,stroke-width:2px
+    classDef warning fill:#fff7ed,stroke:#ea580c,color:#431407,stroke-width:2px
 
-    humanA["Human at Dock A"]:::external
-    humanB["Human at Dock B"]:::external
+    humanA["Person A"]:::external
+    humanB["Final holder B"]:::external
 
     subgraph dockAZone["Dock A laptop"]
-        webA["Web desk and confirmation"]:::implemented
-        qvacA["QVAC voice assistant"]:::planned
-        bleA["Bleak dock central"]:::implemented
-        rgbA["rgb-lib wallet A and policy adapter"]:::verified
-        secretA["Mnemonic A and datadir A"]:::verified
+        webA["Direct-mode web desk"]:::implemented
+        walletA["Wallet A rgb-lib"]:::verified
+        bleA["Bleak dock central"]:::verified
+        qvacA["QVAC typed intent"]:::planned
+        webA --> walletA
         webA --> bleA
-        webA -.->|"planned live activation"| rgbA
-        qvacA -.->|"planned print intent"| webA
-        rgbA --> secretA
+        qvacA -.-> webA
     end
 
-    subgraph billAZone["Bill A hardware"]
-        dockGattA["DockGatt peripheral"]:::implemented
-        oledA["SSD1306 OLED and status LED"]:::implemented
-        tapGattA["TapGatt staged sender or gated receiver"]:::implemented
-        dockGattA --> oledA
+    subgraph vaultZone["Trusted disposable-note vault"]
+        notePolicy["Immutable plans and recovery journal"]:::verified
+        noteN["Fresh note wallet N"]:::verified
+        claim["Salted claim hash | first redemption wins"]:::warning
+        notePolicy --> noteN
+        notePolicy --> claim
     end
 
-    subgraph billBZone["Bill B hardware"]
-        dockGattB["DockGatt peripheral"]:::implemented
-        oledB["External SSD1306 OLED SDA21 SCL22 and GPIO12 TTP223"]:::implemented
-        tapGattB["TapGatt staged sender or gated receiver"]:::implemented
-        dockGattB --> oledB
+    subgraph physical["Offline physical zone"]
+        billA["WEMOS bill | bearer capsule"]:::verified
+        billB["TTGO bill | bearer capsule"]:::verified
+        billA <-.->|"BLE kind 04 | no dock or Internet"| billB
     end
 
     subgraph dockBZone["Dock B laptop"]
-        webB["Web desk and confirmation"]:::implemented
-        qvacB["QVAC voice assistant"]:::planned
-        bleB["Bleak dock central"]:::implemented
-        rgbB["rgb-lib wallet B and OOB import"]:::verified
-        secretB["Mnemonic B and datadir B"]:::verified
-        webB --> bleB
-        webB -.->|"planned live activation"| rgbB
-        qvacB -.->|"planned assistant flow"| webB
-        rgbB --> secretB
+        bleB["Bleak extraction"]:::verified
+        walletB["Wallet B rgb-lib"]:::verified
+        settle["Exact txid + assignment + balance verifier"]:::verified
+        qvacB["QVAC redeem intent"]:::planned
+        bleB --> walletB --> settle
+        qvacB -.-> walletB
     end
 
-    chain["Mutinynet custom signet and Esplora"]:::external
+    chain["Bitcoin Mutinynet + Esplora"]:::external
 
-    humanA --> webA
-    humanB --> webB
-    bleA <-->|"GATT-dock core v1 and chunk v1"| dockGattA
-    bleB <-->|"GATT-dock core v1 and chunk v1"| dockGattB
-    tapGattA <-.->|"GATT-tap one-shot arm and RSSI gate"| tapGattB
-    rgbA -->|"broadcast RGB witness transaction"| chain
-    rgbB -->|"refresh and validate anchor"| chain
-    rgbA -.->|"adapter to chunk handoff pending"| bleA
-    bleB -.->|"chunk to adapter handoff pending"| rgbB
+    humanA --> dockAZone
+    walletA -->|"RGB funding | 5 USDT"| noteN
+    noteN --> chain
+    notePolicy -->|"603-byte capsule"| bleA
+    bleA -->|"GATT dock"| billA
+    billB -->|"GATT dock extraction"| bleB
+    noteN -->|"RGB redemption | 5 USDT"| walletB
+    walletB --> chain
+    humanB --> dockBZone
+
+    noteTrust["Prototype trust: vault retains N keys; copied capsules race"]:::warning
+    noteTrust -.-> vaultZone

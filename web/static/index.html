@@ -3,17 +3,21 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="light dark" />
+  <meta name="theme-color" content="#1f6b3a" />
   <title>RGB cash bill — dock</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='6' width='28' height='20' rx='4' fill='%231f6b3a'/%3E%3Ccircle cx='16' cy='16' r='6.5' fill='none' stroke='%23dff0e3' stroke-width='1.8'/%3E%3Ctext x='16' y='19.6' font-size='9' text-anchor='middle' fill='%23dff0e3' font-family='monospace'%3E%24%3C/text%3E%3C/svg%3E" />
   <link rel="stylesheet" href="/app.css" />
 </head>
 <body>
   <main>
-    <header>
+    <header class="masthead">
       <p class="kicker">Dock · live RGB tap · Mutinynet</p>
       <h1>Cash bill</h1>
-      <p id="meta">loading…</p>
+      <p id="meta" class="meta">loading…</p>
     </header>
-    <section class="device-panel" aria-labelledby="device-heading">
+
+    <section class="card device-panel" aria-labelledby="device-heading">
       <div class="device-heading-row">
         <div>
           <p class="label">Physical bill</p>
@@ -25,7 +29,7 @@
         Scan for a nearby RgbBill advertising the authorized dock service.
       </p>
       <div class="device-actions">
-        <button id="scan-device" type="button">Scan</button>
+        <button id="scan-device" type="button" class="primary">Scan</button>
         <button id="connect-device" class="secondary" type="button" disabled>
           Connect
         </button>
@@ -44,38 +48,63 @@
         saved per dock role; transfers reconnect to it automatically.
       </p>
     </section>
-    <section class="note" aria-live="polite">
-      <p class="label">Wallet balance</p>
-      <p id="denomination">$0.00</p>
-      <p id="status">idle</p>
+
+    <section class="note" aria-live="polite" aria-labelledby="balance-label">
+      <div class="note-grid" aria-hidden="true"></div>
+      <div class="note-body">
+        <p id="balance-label" class="label">Wallet balance</p>
+        <p id="denomination">$0.00</p>
+        <p id="status" class="status">idle</p>
+      </div>
+      <span class="note-seal" aria-hidden="true">RGB</span>
     </section>
-    <section class="workflow" aria-labelledby="workflow-heading">
-      <p class="label">One next action</p>
-      <h2 id="workflow-heading">Move $5.00 USDT</h2>
-      <p id="workflow-help">
+
+    <section class="card workflow" aria-labelledby="workflow-heading">
+      <div class="workflow-heading-row">
+        <div>
+          <p class="label">One next action</p>
+          <h2 id="workflow-heading">Move $5.00 USDT</h2>
+        </div>
+        <span class="workflow-step" aria-hidden="true">Tap flow</span>
+      </div>
+      <p class="workflow-mode">
+        Browser mode: direct invoice + consignment transfer. The verified
+        offline bearer-note lifecycle currently runs through the guarded
+        operator CLI.
+      </p>
+      <p id="workflow-help" class="workflow-help">
         Connect verifies what is physically stored on the bill before any read or write.
       </p>
       <div class="workflow-actions">
-        <button id="send-usdt" type="button">Send USDT</button>
-        <button id="receive-usdt" type="button">Receive USDT</button>
+        <button id="send-usdt" type="button" class="action">Send USDT</button>
+        <button id="receive-usdt" type="button" class="action">Receive USDT</button>
       </div>
       <p id="workflow-message" aria-live="polite"></p>
+      <div id="recovery" class="recovery" hidden>
+        <p id="recovery-note" class="recovery-note" aria-live="polite"></p>
+        <button id="retry-stage" type="button" class="secondary">
+          Retry BLE step
+        </button>
+      </div>
     </section>
-    <section class="chat">
+
+    <section class="card chat">
       <details>
         <summary>Advanced text commands</summary>
-      <ol id="log"></ol>
-      <form id="form">
-        <label for="text">Assistant</label>
-        <input id="text" name="text" autocomplete="off" placeholder="bill for $5" />
-        <button id="send" type="submit">Send</button>
-      </form>
+        <ol id="log"></ol>
+        <form id="form">
+          <label for="text">Assistant</label>
+          <input id="text" name="text" autocomplete="off" placeholder="bill for $5" />
+          <button id="send" type="submit">Send</button>
+        </form>
       </details>
     </section>
   </main>
+
   <dialog id="confirm">
     <form method="dialog" id="confirm-form">
-      <h2>Confirm Mutinynet broadcast</h2>
+      <p class="label">Confirmation gate</p>
+      <h2 id="confirm-title">Confirm Mutinynet broadcast</h2>
       <p id="confirm-note"></p>
       <pre id="confirm-plan"></pre>
       <label for="confirmation-phrase">Type the exact confirmation phrase</label>
@@ -85,12 +114,14 @@
         autocomplete="off"
         spellcheck="false"
       />
+      <p id="confirm-error" class="confirm-error" role="alert" aria-live="assertive"></p>
       <menu>
-        <button value="cancel" type="submit">Cancel</button>
-        <button id="approve" value="default" type="submit">Broadcast once</button>
+        <button value="cancel" type="submit" class="secondary">Cancel</button>
+        <button id="approve" value="default" type="submit" class="primary">Broadcast once</button>
       </menu>
     </form>
   </dialog>
+
   <script src="/app.js"></script>
 </body>
 </html>

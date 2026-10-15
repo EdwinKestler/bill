@@ -1,0 +1,33 @@
+stateDiagram-v2
+    direction LR
+
+    [*] --> PREPARING
+    PREPARING --> AWAITING_FUNDING: immutable funding plan
+    AWAITING_FUNDING --> FUNDING_IMPORTED: exact confirmation and broadcast
+    FUNDING_IMPORTED --> ACTIVE: exact receive settles
+    ACTIVE --> CLAIM_PLANNED: valid capsule and fresh Wallet B invoice
+    CLAIM_PLANNED --> CLAIMING: exact redemption confirmation
+    CLAIMING --> BROADCAST_RECORDED: txid and consignment persisted
+    BROADCAST_RECORDED --> REDEMPTION_IMPORTED: Wallet B imports retained proof
+    REDEMPTION_IMPORTED --> REDEEMED: exact transfer and balance settle
+
+    CLAIMING --> AMBIGUOUS: unknown send outcome
+    BROADCAST_RECORDED --> IMPORT_RECOVERY_REQUIRED: Wallet B import failure
+    IMPORT_RECOVERY_REQUIRED --> REDEMPTION_IMPORTED: import retained proof only
+
+    CLAIMING --> PRE_BROADCAST_REJECTED: proven allocation-slot rejection
+    PRE_BROADCAST_REJECTED --> CAPACITY_PLANNED: separate Bitcoin plan
+    CAPACITY_PLANNED --> CAPACITY_BROADCAST_RECORDED: separate confirmation
+    CAPACITY_BROADCAST_RECORDED --> CAPACITY_READY: confirmed free colorable UTXO
+    CAPACITY_READY --> CLAIM_PLANNED: fresh redemption plan
+
+    note right of REDEEMED
+        Terminal result.
+        Plan REDEEMED and claim SPENT.
+        Refresh replay cannot send.
+    end note
+
+    note right of AMBIGUOUS
+        Never resend automatically.
+        Manual chain and wallet reconciliation.
+    end note

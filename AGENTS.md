@@ -1,8 +1,31 @@
 # AGENTS.md — RGB cash bill
 
-This folder is the bill project. It lives **inside** the hackathon workspace
-`/media/kestl/andor/github/rgbhackathon`. Product code for the pucks and docks
-stays here until a human moves it to `apps/`.
+This folder is the bill project and its submission repository. It lives
+**inside** the hackathon workspace `/media/kestl/andor/github/rgbhackathon`,
+but product code for the bills and docks remains here; do not wait for a move
+to `apps/` before implementing the final product.
+
+## Active delivery authorization
+
+The organizers gave the team approval on 2026-10-15 to begin final-project
+work before the scheduled on-site clock, provided the project is kept in the
+public submission repository and all prior work is declared. There is no
+Saturday start gate, planning-only gate, or environment-report gate for work
+in this folder. Continue safe implementation, testing, documentation, and live
+Mutinynet acceptance whenever a human requests the work.
+
+Optimize the Sunday deliverable against the official scorecard:
+
+- RGB 25%: real, non-trivial RGB behavior in the product.
+- QVAC 20%: local AI performs a necessary user-facing job.
+- Execution 20%: the primary flow works live end to end.
+- UX/UI 15%: a non-technical user understands each action and error.
+- Innovation 10% and marketability 10%.
+- WDK is optional and may add up to one bonus point.
+
+The repository must be publicly visible for judging. Verify visibility without
+GitHub credentials before submission; a public Pages site alone is not proof
+that the source repository is public.
 
 ## Palimnex (one silo)
 
@@ -15,7 +38,10 @@ Use the **parent** cache. Do not create another Palimnex project.
 - Never `palimnex init` here. Never commit `.palimnex/` or `*.pmem`
 
 Full prompt: `docs/LOOKUP.md` and `docs/agents-prompt.md`.
-OpenAI 5.6 test-env bring-up: `docs/agents-prompt-openai-56.md`.
+OpenAI 5.6 active delivery prompt: `docs/agents-prompt-openai-56.md`.
+Offline bearer-note delivery prompt: `docs/agents-prompt-offline-note.md`.
+Its design decision and ranked fallbacks are in
+`docs/OFFLINE-RGB-DEMO-DESIGN.md`.
 
 ## What we are building
 
@@ -44,6 +70,9 @@ Read `docs/DESIGN.md` then `docs/PROTOCOL.md`.
 - Empty RGB transport endpoints on the tap; no Wi‑Fi consignment cheat
 - BLE patterns from `/media/kestl/andor/github/waveshares3`; new GATT; no locker code
 - Do not commit, push, or flash unless a human asks
+
+These rules protect funds, devices, secrets, and repository history. They are
+not instructions to delay ordinary product implementation.
 
 ## Skills
 

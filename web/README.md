@@ -15,8 +15,9 @@ source .venv/bin/activate
 python -m web.server
 ```
 
-Binds the role-specific loopback host and port from the environment. On the
-current bench, A uses `127.0.0.1:8788` and B uses `127.0.0.1:8789`. Role B
+By default it binds the role-specific loopback host and port from the
+environment. On the current bench, A uses port `8788` and B uses port `8789`.
+Role B
 creates/stages the real witness invoice and imports the received consignment.
 Role A retrieves the tapped invoice and presents an immutable plan. Broadcast
 is unreachable until the operator types the displayed exact
@@ -29,6 +30,12 @@ Keep role A on port `8788` and role B on port `8789`, then open either
 The wildcard listens on every host interface, including VPN interfaces. Do not
 forward these ports: the prototype has no web-user authentication, so any
 client that can reach them can operate the dock UI.
+
+This web application implements the accepted direct invoice/consignment flow.
+The disposable offline bearer-note path is currently operated through
+`scripts/note_wallet_live.py` and is documented in
+[`OFFLINE-BEARER-RUNBOOK.md`](../docs/OFFLINE-BEARER-RUNBOOK.md). Do not imply
+that the browser can yet fund, load, or redeem a bearer note.
 
 Post-broadcast staging failure retains the exact consignment and exposes a
 stage-only retry that cannot send again. Import failure similarly retains and
@@ -59,6 +66,12 @@ disclosure for diagnostics and recovery, not as the normal human procedure.
 Inventory v2 also exposes `recovery-blocked`; both primary actions fail closed
 in that state so a retained DockGatt artifact can never be mistaken for an
 empty bill and produce a second invoice.
+
+The browser layout uses a cash-note balance card, one prominent next-action
+card, responsive desktop/mobile spacing, and an inline recovery card. Recovery
+buttons call only the retained-artifact endpoints; they never repeat an RGB
+send. The visual layer deliberately keeps the existing **bill** terminology
+and manual Send/Receive actions—there is no background BLE transfer trigger.
 
 | Path | Job |
 | --- | --- |

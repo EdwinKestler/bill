@@ -48,6 +48,20 @@ def test_corrupt_frame_is_rejected_before_reassembly():
     assert caught.value.status is AckStatus.CRC_MISMATCH
 
 
+def test_bearer_note_round_trip_is_supported_data():
+    frames = list(
+        iter_frames(b"RGBN bearer capsule", FrameKind.BEARER_NOTE, 0xAABBCCDD, 7)
+    )
+    receiver = ChunkReceiver()
+
+    for frame in frames:
+        receiver.accept(decode_frame(encode_frame(frame)))
+
+    assert receiver.complete
+    assert receiver.kind is FrameKind.BEARER_NOTE
+    assert receiver.payload == b"RGBN bearer capsule"
+
+
 def test_receiver_reassembles_ordered_frames_and_deduplicates_previous_frame():
     frames = list(iter_frames(b"abcdefgh", FrameKind.INVOICE, 99, payload_bytes=3))
     receiver = ChunkReceiver()

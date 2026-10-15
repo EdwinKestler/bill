@@ -9,12 +9,48 @@ The first tap/chunk protocol was physically accepted on 2026-10-11. The
 human-first inventory revision below was flashed and physically accepted on
 both board profiles on 2026-10-15 with settled $5 Mutinynet transaction
 `1f8953866f24f5b64ec02875aa51507fc6c76777646680eddfb573247cf5d45f`.
+Bearer kind `0x04` and inventory v3 were physically accepted on 2026-10-15
+with a 520-byte synthetic artifact across WEMOS → TTGO → WEMOS → TTGO,
+including TTGO restart restoration. The source SHA-256 was
+`925a4bf7cdf591eea7e5b78975964aee5801417761474fe3588b385ba00bc014`;
+the later live 603-byte capsule crossed WEMOS → TTGO, survived restart, and was
+extracted with exact SHA-256
+`a38775213ac972dae871906e37b09750e25e4fe71a2d28a9bd4bd3fca4615144`.
 `include/config.h` and `docs/devs/gatt-contract.json` stay in lockstep with
 this document.
 
 Device name: `RgbBill`.
 
-## The procedure people follow
+## Primary procedure: carry value offline
+
+This is the selected demo procedure. It deliberately separates online RGB
+funding/redemption from offline possession transfer.
+
+1. Dock A prepares a fresh disposable note wallet N and an immutable plan to
+   fund it with exactly 5 USDT. A human types the exact fresh confirmation.
+2. After N's receive is settled, Dock A creates and loads one bearer capsule
+   onto the starting bill. The capsule has kind `0x04` and contains no wallet
+   mnemonic or datadir.
+3. With docks/network unavailable, an empty bill is pressed once near the
+   holder. It receives the same capsule, promotes it to `bearer-held`, and can
+   relay it again. No button is held.
+4. At the destination dock, `bearer-held` inventory is extracted through
+   `CHUNK_OUT`, persisted privately, and compared to the source SHA-256 before
+   parsing. Interrupted extraction leaves the bill copy intact.
+5. Only after capsule validation does Wallet B create its fresh transport-free
+   invoice. The vault prepares an immutable redemption plan; another exact
+   one-use confirmation authorizes one RGB send from N.
+6. Wallet B imports the exact retained consignment and refreshes. The note is
+   terminal `REDEEMED` only when the exact txid has one `receive_witness`
+   transfer with one 5,000,000-unit assignment and the recorded balance delta
+   is fully settled.
+
+The BLE hops are bearer-capability transfers, not RGB state transitions. A
+copied capsule is first-redemption-wins because the trusted vault controls N
+and permits only one claim. See
+[`OFFLINE-BEARER-RUNBOOK.md`](OFFLINE-BEARER-RUNBOOK.md).
+
+## Direct-mode fallback procedure
 
 There are only two primary dock actions. Dock A uses **Send USDT**. Dock B
 uses **Receive USDT**. Every action connects and reads the bill inventory
@@ -38,7 +74,7 @@ instruction, never a normal CHUNK_OUT timeout.
 
 No action silently discards or overwrites an artifact. If the stored artifact
 does not match the selected action, the dock explains the next physical step.
-If a complete dock artifact cannot be handed to the tap service, inventory v2
+If a complete dock artifact cannot be handed to the tap service, inventory v3
 reports `recovery-blocked` instead of `empty`. Both primary actions then stop
 before creating, reading, or sending another artifact. The screen shows
 `RECOVERY` with the retained amount when its metadata is known, or `CLEAR
@@ -66,6 +102,7 @@ balances remain on the laptop dock.
 | invoice, bill→dock | `$5.00 / INVOICE DOCK` | Dock A: **Send USDT** reads invoice |
 | consignment, bill→peer | `$5.00 / PROOF TAP` | Press the receiving bill once |
 | consignment, bill→dock | `$5.00 / PROOF DOCK` | Dock B: **Receive USDT** imports proof |
+| bearer note, held | `$5.00 / NOTE` | Empty receiver: press once nearby, or destination dock: extract for redemption |
 | recovery blocked, known artifact | `$5.00 / RECOVERY` | Explicitly discard bill staging, then retry the retained dock action |
 | recovery blocked, unknown orphan | `CLEAR STORAGE` (no amount) | Explicitly discard the orphan before starting a transfer |
 
@@ -87,14 +124,15 @@ Laptop is central. Bill is peripheral. One active transfer per connection.
 | CMD | `…c005` | Write-with-response | UTF-8 command v1 |
 | CHUNK_IN | `…c006` | Write-with-response | Binary frame v1, dock → bill |
 | CHUNK_OUT | `…c007` | Notify | Binary frame v1, bill → dock |
-| ARTIFACT_META | `…c008` | Read | 16-byte inventory v2 |
+| ARTIFACT_META | `…c008` | Read | 16-byte inventory v3 |
 
-`ARTIFACT_META` v2 is little-endian: version (1 byte, `0x02`), direction (1
-byte: empty `0`, bill-to-peer `1`, bill-to-dock `2`, recovery-blocked `3`),
-kind (1 byte: empty/unknown `0`, invoice `1`, consignment `2`), reserved zero
+`ARTIFACT_META` v3 is little-endian: version (1 byte, `0x03`), direction (1
+byte: empty `0`, bill-to-peer `1`, bill-to-dock `2`, recovery-blocked `3`,
+bearer-held `4`), kind (1 byte: empty/unknown `0`, invoice `1`, consignment `2`,
+bearer note `4`), reserved zero
 (1 byte), session id (uint32), byte size (uint32), and denomination cents
-(uint32). Docks decode v1 for upgrade compatibility, but direction `3` is
-valid only in v2. A known complete blocked artifact preserves its kind,
+(uint32). Docks decode v1 and v2 for upgrade compatibility; direction `3` was
+introduced in v2 and direction `4` is valid only in v3. A known complete blocked artifact preserves its kind,
 session, size, and denomination. An untyped orphan uses zero for those fields.
 
 Dock core exposes one non-production display command:
@@ -122,17 +160,18 @@ little-endian:
 | Field | Size | Meaning |
 | --- | ---: | --- |
 | version | 1 | `0x01` |
-| kind | 1 | `0x01` invoice, `0x02` consignment, `0x03` ACK |
+| kind | 1 | `0x01` invoice, `0x02` consignment, `0x03` ACK, `0x04` bearer note |
 | session_id | 4 | Random per transfer session |
 | sequence | 2 | Zero-based frame index |
 | total | 2 | Total number of frames |
 | payload_length | 2 | Payload bytes in this frame, maximum 200 |
-| payload | 0–200 | Raw invoice, consignment, or ACK bytes |
+| payload | 0–200 | Raw invoice, consignment, bearer-capsule, or ACK bytes |
 | crc32 | 4 | CRC-32 over all preceding frame bytes |
 
 Data payloads are 1–200 bytes. The dock defaults to 180 bytes, making the
 largest normal frame 196 bytes under the firmware's requested ATT MTU of 247.
-The receiver accepts only invoice (`0x01`) and consignment (`0x02`) data,
+The receiver accepts invoice (`0x01`), consignment (`0x02`), and bearer-note
+(`0x04`) data,
 requires sequence zero first, enforces one stable kind/session/total tuple,
 and appends only the exact next sequence. An exact retry of the immediately
 previous frame is idempotently ACKed without being appended twice.
@@ -166,7 +205,8 @@ a dock disconnect for the future tap layer;
 incomplete sessions are deleted on disconnect or after the five-minute
 session timeout. `chunk:discard` explicitly frees dock and tap staging slots.
 
-This layer transports exact opaque invoice and consignment bytes only. It does
+This layer transports exact opaque invoice, consignment, and bearer-capsule
+bytes only. It does
 not prove that the payload is valid RGB data. The existing wallet adapter is
 still the authority that creates invoices and imports received OOB
 consignments.
@@ -191,7 +231,7 @@ explicitly cancels an armed window or active receive session.
 
 | Name | UUID suffix | Properties | Payload |
 | --- | --- | --- | --- |
-| META | `…0003` | Read | 16-byte tap metadata v2 |
+| META | `…0003` | Read | 16-byte tap metadata v3 |
 | CONTROL | `…0004` | Write-with-response | `0x01` START, `0x02` CANCEL |
 | CHUNK_IN | `…0005` | Write-with-response | chunk-v1 ACK, receiver → sender |
 | CHUNK_OUT | `…0006` | Notify | chunk-v1 data, sender → receiver |
@@ -200,9 +240,9 @@ Tap metadata is little-endian:
 
 | Field | Size | Meaning |
 | --- | ---: | --- |
-| version | 1 | `0x02` (`0x01` 12-byte metadata is decode-only legacy) |
+| version | 1 | `0x03` (`0x01` 12-byte and `0x02` 16-byte metadata are decode-only legacy) |
 | state | 1 | `0x00` empty, `0x01` artifact ready |
-| kind | 1 | chunk-v1 invoice `0x01` or consignment `0x02`; zero if empty |
+| kind | 1 | chunk-v1 invoice `0x01`, consignment `0x02`, or bearer note `0x04`; zero if empty |
 | reserved | 1 | Must be zero |
 | session_id | 4 | Same session identifier carried by every chunk frame |
 | size | 4 | Exact artifact byte count, maximum 655360 |
@@ -216,6 +256,22 @@ receiver writes `/tap-in.part`, atomically promotes it to `/tap-in.ready`, and
 then makes it available through dock `CHUNK_OUT`. No RGB parsing occurs on the
 ESP32.
 
+Bearer notes are the exception to the dock-facing handoff: after the complete
+`0x04` file and its sidecar are durable, the receiver atomically promotes them
+to `/tap-out.ready`. Inventory becomes `bearer-held`, and that bill can be the
+sender for the next offline hop without either laptop or Internet access. The
+original sender keeps its file until the successful final ACK and only then
+deletes it. Invoice and consignment behavior stays unchanged.
+
+At the destination, a laptop that reads `bearer-held` may subscribe to dock
+`CHUNK_OUT` and request kind `0x04`. TapGatt exposes `/tap-out.ready` to
+DockGatt only after the laptop enables notifications. The bill retains the
+capsule through the final dock ACK; only then is `/tap-out.ready` deleted and
+its sidecar reconciled to empty inventory. The dock must persist the received
+file privately and verify its full SHA-256 before parsing or planning
+redemption. A connection, inventory read, timeout, or interrupted extraction
+does not consume the bearer note.
+
 After the receiver disconnects its tap client, dock advertising is restarted
 from the main loop after a short BLE-stack teardown delay rather than directly
 inside the disconnect callback. A bill-to-bill connection is not treated as a
@@ -225,11 +281,29 @@ only after the laptop has enabled that characteristic's notification CCCD.
 The discovery advertisement remains the frozen dock advertisement so it
 continues to fit one legacy 31-byte PDU. Tap discovery uses the `RgbBill*`
 name and validates the tap service after connection; no invoice, consignment,
-amount, or session metadata is placed in advertising data.
+bearer capsule, amount, or session metadata is placed in advertising data.
 
 Security: dock link may request bonding (`ENC_NO_MITM`) like the Waveshare
 gateway. Tap link is short-lived; Mutinynet demo may stay unauthenticated.
 Mainnet would need a pairing story.
+
+## Bearer-note settlement state
+
+The vault/dock state is intentionally separate from firmware inventory:
+
+```text
+PREPARING -> AWAITING_FUNDING -> ACTIVE -> CLAIM_PLANNED
+          -> CLAIMING -> BROADCAST_RECORDED -> REDEMPTION_IMPORTED -> REDEEMED
+                    \-> AMBIGUOUS           \-> IMPORT_RECOVERY_REQUIRED
+
+PRE_BROADCAST_REJECTED -> CAPACITY_PLANNED
+ -> CAPACITY_BROADCAST_RECORDED -> CAPACITY_READY -> CLAIM_PLANNED
+```
+
+Firmware `bearer-held` means only that a complete capsule is durable. It does
+not mean the RGB allocation is unspent or settled. The vault is authoritative
+for claim state; Wallet B's exact settlement verifier is authoritative for
+`REDEEMED`. A web or indexer timeout never grants permission to resend.
 
 Both current bill profiles sample the TTP223 output on GPIO12 as an active-high
 digital input. GPIO12 is also the ESP32 MTDI flash-voltage strap, so each

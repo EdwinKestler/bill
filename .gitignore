@@ -21,6 +21,7 @@ secrets/
 # RGB / Bitcoin wallet state (one bill, one datadir)
 wallet-data/
 .rgb-oob/
+.note-vault/
 *.sqlite
 *.sqlite-journal
 .rgb/

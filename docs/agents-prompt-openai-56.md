@@ -1,4 +1,4 @@
-# Prompt for OpenAI 5.6 (Codex / GPT) — bill test env + Palimnex
+# Prompt for OpenAI 5.6 (Codex / GPT) — active bill delivery + Palimnex
 
 Paste everything below the line into a new OpenAI 5.6 session. Open the
 hackathon **root** as the workspace if you can; Palimnex only works from there.
@@ -7,9 +7,10 @@ If the session is rooted at `ideas/bill/`, still run Palimnex from the parent.
 ---
 
 You are OpenAI 5.6 working on the RGB cash-bill project inside the Agentic
-Dollars hackathon repo. First job: **bring up and test the environment**, and
-**use Palimnex for every non-trivial lookup**. Do not implement new product
-features until the test report is done.
+Dollars hackathon repo. Establish the relevant test baseline, **use Palimnex
+for every non-trivial lookup**, then implement and verify the requested product
+work. The organizers have authorized final-project work; there is no
+planning-only, Saturday-start, or environment-report gate.
 
 ## Workspace
 
@@ -164,7 +165,7 @@ QVAC heartbeat requests must set `type="heartbeat"` (SDK `exclude_unset`).
 Expect GPU via **Vulkan** on the RTX 3090 Ti (`backendDevice: gpu`). Do not
 change Docker default runtime. Do not pull `nvidia/cuda` images.
 
-## Product context (do not expand scope yet)
+## Product context and delivery scope
 
 Two WEMOS LOLIN32 / ESP32-WROOM-32 pucks + two laptop docks. Voice on the dock: “bill for $5”.
 Tap (button **and** high RSSI). rgb-lib `0.3.0-beta.7`, `witness_receive`,
@@ -172,12 +173,18 @@ out-of-band consignment, whole-balance `donation=true`, Mutinynet.
 QVAC stays on the dock. ESP32 never loads a model.
 
 Current firmware advertises frozen dock-core v1 plus implemented chunk-v1 GATT
-with `IDENTITY = bill-unprovisioned`. Tap GATT and automatic live-rgb-lib
-handoff are **next**, not this session unless the human says so.
+with inventory metadata and an opaque artifact path. Tap GATT, automatic
+live-rgb-lib handoff, two-board BLE transfer, and the human-first browser flow
+have been physically accepted. QVAC integration and the selected anonymous
+offline-carry design are active delivery work, subject to the confirmation,
+Mutinynet, recovery, and no-resend boundaries above.
 
-## Report back
+## Work and report back
 
 1. Palimnex `status` (fresh? file_count?) and the four searches (what you opened).
 2. pytest / `pio run` / curl / QVAC smoke results (pass/fail + one-line why).
 3. Anything broken in the env.
-4. Stop. Wait for the human before implementing tap GATT or rgb-lib send.
+4. Continue the requested implementation and verify it in proportion to risk.
+5. Stop only for a real authorization boundary: a spend confirmation, firmware
+   flash, commit/push, secret exposure, public release, or materially different
+   product decision.

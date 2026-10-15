@@ -1,31 +1,35 @@
 stateDiagram-v2
     direction LR
 
-    [*] --> Idle
-    Idle: idle
-    Idle: EMPTY and no amount
-    InvoiceOut: 5 dollars INVOICE TAP
-    InvoiceIn: 5 dollars INVOICE DOCK
-    ProofOut: 5 dollars PROOF TAP
-    ProofIn: 5 dollars PROOF DOCK
-    Error: error
-    Error: session cleared and operator informed
+    [*] --> Empty
+    Empty: EMPTY | no amount
+    BearerHeld: 5 dollars NOTE
+    Armed: TAP READY | 15 seconds
+    Receiving: receiving acknowledged kind 04 frames
+    Extracting: destination dock CHUNK_OUT
+    Recovery: RECOVERY or CLEAR STORAGE
 
-    Idle --> InvoiceOut: Dock B Receive USDT stages invoice
-    InvoiceOut --> Idle: successful tap send
-    Idle --> InvoiceIn: one-shot tap receives invoice
-    InvoiceIn --> Idle: Dock A Send USDT reads invoice
-    Idle --> ProofOut: confirmed send stages consignment
-    ProofOut --> Idle: successful tap send
-    Idle --> ProofIn: one-shot tap receives consignment
-    ProofIn --> Idle: Dock B Receive USDT reads proof
-    InvoiceOut --> Error: transfer failure keeps artifact
-    InvoiceIn --> Error: dock read failure keeps artifact
-    ProofOut --> Error: transfer failure keeps artifact
-    ProofIn --> Error: import failure persists dock copy
-    Error --> Idle: explicit recovery completes
+    Empty --> BearerHeld: dock loads complete bearer capsule
+    Empty --> Armed: one rising touch edge
+    Armed --> Receiving: qualifying peer RSSI at least -60
+    Armed --> Empty: timeout or second press
+    Receiving --> BearerHeld: complete capsule atomically promoted
+    Receiving --> Empty: incomplete receive discarded
+    BearerHeld --> Empty: successful final tap ACK
+    BearerHeld --> Extracting: destination dock enables CHUNK_OUT
+    Extracting --> Empty: successful final dock ACK
+    Extracting --> BearerHeld: disconnect or timeout keeps capsule
 
-    note right of ProofOut
-        Human confirmation occurs on Dock A before broadcast.
-        Ambiguous sends are audited and never retried automatically.
+    Empty --> Recovery: orphan or invalid sidecar detected
+    BearerHeld --> Recovery: metadata and stored file disagree
+    Recovery --> Empty: explicit operator discard only
+
+    note right of BearerHeld
+        bearer-held proves only durable bytes.
+        It does not prove the claim is unspent.
+    end note
+
+    note right of Recovery
+        Never report retained data as empty.
+        Touch and new staging are blocked.
     end note

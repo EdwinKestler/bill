@@ -44,7 +44,7 @@ def test_all_frozen_dock_core_uuids_match():
 
     assert (
         contract["status"]
-        == "dock-core-v1+artifact-inventory-v2+chunk-v1+tap-v2-build-verified"
+        == "dock-core-v1+artifact-inventory-v3+chunk-v1-bearer-extraction+tap-v3-build-verified"
     )
     for suffix in suffixes:
         uuid = f"7c3e9a10-4b1e-4c8f-9d2a-00b111d0c00{suffix}"
@@ -62,9 +62,14 @@ def test_all_frozen_dock_core_uuids_match():
     assert characteristics["chunk_in"]["implemented"] is True
     assert characteristics["chunk_out"]["implemented"] is True
     assert characteristics["artifact_meta"]["encoding"] == (
-        "artifact-inventory-v2-little-endian"
+        "artifact-inventory-v3-little-endian"
     )
     assert "3 recovery-blocked" in characteristics["artifact_meta"]["layout"]["1"]
+    assert "4 bearer-held" in characteristics["artifact_meta"]["layout"]["1"]
+    assert contract["chunk_v1"]["kinds"]["bearer_note"] == int(
+        chunk_protocol.FrameKind.BEARER_NOTE
+    )
+    assert "constexpr uint8_t VERSION = 0x03" in config
     assert characteristics["chunk_in"]["max_transfer_bytes"] == 640 * 1024
     assert contract["chunk_v1"]["ack_status"]["accepted"] == 0
     assert contract["chunk_v1"]["ack_status"]["busy"] == 9
@@ -104,8 +109,18 @@ def test_tap_v1_uuids_and_gate_match_firmware():
 
     tap = contract["services"]["tap"]
     assert tap["implemented"] is True
-    assert tap["physical_acceptance"] is False
+    assert tap["physical_acceptance"] is True
     assert tap["build_verified"] is True
+    bearer = tap["bearer_v3_physical_acceptance_evidence"]
+    assert bearer["artifact_kind"] == int(chunk_protocol.FrameKind.BEARER_NOTE)
+    assert bearer["inventory_direction"] == 4
+    assert bearer["hops"] == [
+        "wemos-to-ttgo",
+        "ttgo-to-wemos",
+        "wemos-to-ttgo",
+    ]
+    assert bearer["restart_persistence"].startswith("ttgo-restored")
+    assert bearer["final_digest_reread"] is False
     assert tap["previous_v1_physical_acceptance_evidence"]["fixture_bytes"] == 520
     assert (
         tap["previous_v1_physical_acceptance_evidence"]["sha256"]

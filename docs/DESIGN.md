@@ -14,12 +14,15 @@ phone app, and no guessing whether the bill should be read or written.
 | --- | --- | --- |
 | Dock A / Dock B | Two laptops | Python web desk (`web/`, :8788), Bleak GATT (`dock/`), rgb-lib-python, QVAC voice, Mutinynet broadcast |
 | Bill A / Bill B | WEMOS LOLIN32 and LilyGO TTGO LoRa32 V1.3 / ESP32 | SSD1306 OLED, tap input, radio. **No** rgb-lib, **no** QVAC |
+| Disposable note vault | Local trusted process for the selected demo | One fresh rgb-lib wallet N per note, claim hash, immutable plans, recovery journal |
 | GATT-dock | laptop ↔ its bill | On-demand connection. Inventory, commands, status, denomination, opaque chunks |
-| GATT-tap | bill ↔ bill | A press edge arms a bounded receiver window; high RSSI gates the peer. Carries invoice + consignment |
+| GATT-tap | bill ↔ bill | A press edge arms a bounded receiver window; high RSSI gates the peer. Carries invoice, consignment, or an opaque bearer capsule |
 
-Each bill is its own rgb-lib wallet (own mnemonic, own datadir). The dock
-mounts that wallet for the transfer, then the only copy of the stash is the
-bill’s pairing to that dock. Never open the same datadir in two processes.
+The ESP32 bills are not rgb-lib wallets. Wallet A and Wallet B each have their
+own mnemonic/datadir on their role-scoped docks. The selected offline mode adds
+one disposable note wallet N per note inside the trusted local vault. The bill
+carries only an opaque bearer capsule; it never receives N's mnemonic or
+datadir. Never open any datadir in two processes.
 
 Each role-specific web dock registers one physical bill. Discovery requires
 the frozen dock service UUID plus an RgbBill-family advertised name; a
@@ -30,16 +33,32 @@ Transfers reconnect to that saved address on demand. Registration is
 locked while a transfer or recovery boundary is active. This is prototype
 device selection, not cryptographic device ownership authentication.
 
-## RGB mapping
+## Primary RGB mapping: offline bearer note
 
-1. Dock B **Receive USDT** creates a $5 witness invoice and loads Bill B.
-2. Tap moves the invoice B→A; Dock A **Send USDT** reads it and presents the
-   exact confirmation gate.
-3. After the one authorized Mutinynet broadcast, tap moves the exact
-   consignment A→B; Dock B **Receive USDT** reads and imports it.
-4. Empty `transport_endpoints`. Use rgb-lib out-of-band consignment receive. Docks do not exchange the packet over Wi‑Fi.
-5. The board display shows an amount only while a complete invoice or
-   consignment is physically stored. Empty inventory displays no amount.
+1. Wallet A funds fresh isolated note wallet N with exactly 5 USDT through a
+   transport-free witness invoice and one exact confirmation.
+2. After N settles, the vault creates a 603-byte bearer capsule containing a
+   random claim capability and redacted funding evidence—never wallet keys.
+3. Dock A loads the capsule onto a bill. Bills relay the same kind `0x04`
+   artifact over BLE while docks and Internet are unavailable.
+4. The final dock extracts and hashes the exact capsule. Only then does Wallet
+   B create its fresh transport-free redemption invoice.
+5. One separate exact confirmation authorizes N's one RGB send. Wallet B
+   imports the exact retained consignment and becomes `REDEEMED` only after an
+   exact txid/assignment/balance settlement check.
+
+There are exactly two RGB transitions: Wallet A → N and N → Wallet B. The
+offline bill-to-bill hops move the bearer capability but do not alter RGB
+state. The vault retains N's keys, so this is trusted custody and copied
+capsules are first-redemption-wins.
+
+## Direct-mode fallback
+
+The accepted browser flow remains available: Dock B creates a $5 invoice,
+Bill B taps it to Bill A, Dock A confirms one send, Bill A taps the exact
+consignment back, and Dock B imports it. Both modes require empty RGB
+`transport_endpoints`; docks never exchange the payload over Wi‑Fi. The board
+displays an amount only while a complete artifact is durable.
 
 The dock adapter enforces this as two isolated processes, not one process with
 two wallet objects. Bill B creates the witness invoice. Bill A reads its full
@@ -58,11 +77,20 @@ On-chain rgb-lib, not RLN. Lightning is a channel, not a note.
 - GATT-dock chunk v1 is implemented: CRC32, ordered stop-and-wait frames,
   per-frame ACKs, and one opaque SPIFFS-staged artifact up to 640 KiB. Its
   diagnostic echo validates both directions without invoking a wallet.
-- Dock artifact inventory v2 is a 16-byte read-only characteristic. It makes
+- Dock artifact inventory v3 is a 16-byte read-only characteristic. It makes
   connect-time direction selection deterministic and prevents blind
   CHUNK_OUT waits. Direction `recovery-blocked` prevents a retained DockGatt
   artifact or tap-storage orphan from being misreported as empty and blocks a
   second invoice until explicit operator recovery.
+- Kind `0x04` is an opaque bearer-note capsule. Direction `bearer-held` means
+  the complete capsule is durable and ready for another offline bill-to-bill
+  hop. The receiving bill promotes it to its next tap-out slot; the sender
+  deletes only after the successful final ACK. Firmware emits v3 while keeping
+  inventory/tap metadata v1/v2 decode compatibility.
+- A destination dock may subscribe to dock `CHUNK_OUT` while inventory is
+  `bearer-held` to extract that same capsule for redemption. The bill keeps the
+  file through the final dock ACK, then clears the bearer file and sidecar.
+  Merely connecting or reading inventory never consumes the note.
 - GATT-tap: the bill holding the staged artifact stays **peripheral/sender**;
   one debounced tap on the empty bill arms a 15-second **central/receiver**
   window. The operator may release immediately. The receiver connects only if
@@ -94,7 +122,7 @@ On-chain rgb-lib, not RLN. Lightning is a channel, not a note.
   profiles remain documented. See
   [TTGO-LORA32-V1.3-TEST.md](TTGO-LORA32-V1.3-TEST.md).
 
-## Weekend order
+## Delivery status and Sunday priorities
 
 1. Two rgb-lib wallets, witness + OOB consignment over USB serial, docks drive OLEDs/LEDs.
 2. Replace the cable with dock GATT chunks. **Implemented and physically
@@ -107,10 +135,21 @@ On-chain rgb-lib, not RLN. Lightning is a channel, not a note.
 5. Integrate the accepted flow into `python -m web.server`. **Implemented with
    exact typed confirmation and no-resend recovery; browser-driven physical
    acceptance completed on 2026-10-15.**
-6. Connect QVAC “print a five” intent parsing to the accepted web action.
-7. Human-first inventory/tap metadata v2. **Implemented, flashed, and
+6. Human-first inventory/tap metadata v2. **Implemented, flashed, and
    physically accepted on both boards with a settled $5 Mutinynet transfer on
    2026-10-15.**
+7. Offline bearer-note mode. **Implemented and live accepted:** isolated note
+   funding, 603-byte capsule, physical WEMOS → TTGO relay/restart, exact
+   extraction, separately gated capacity, one-shot redemption, Wallet B
+   settlement, and durable `REDEEMED` closure.
+8. Integrate the accepted operator bearer flow into the web dock without
+   weakening confirmation/recovery boundaries. **Not yet implemented.**
+9. Connect local QVAC typed intent parsing to the accepted deterministic
+   actions and capture a reproducible evaluation. **Not yet implemented and
+   required for the final submission.**
+10. Rehearse one non-technical three-minute live flow with understandable
+   device/dock states and recovery messages. Add WDK only after the RGB + QVAC
+   primary flow is stable; WDK is bonus, not a blocker.
 
 ## Web dock language
 
@@ -127,4 +166,7 @@ desk UI is already a browser page.
 
 ## Judging
 
-Track 2 self-custodial dollars, cash UX. QVAC stays on the dock (criterion 2). Real Mutinynet tx on tap (criterion 1).
+Real RGB is proven by the two accepted Mutinynet transitions. QVAC stays on the
+dock and remains an open integration gate. WDK is not integrated. The selected
+bearer-note demo is explicitly trusted-vault custody; do not describe it as a
+production self-custodial note.

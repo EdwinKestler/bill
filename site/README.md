@@ -13,11 +13,11 @@ python3 -m http.server 8790 --bind 127.0.0.1 --directory .site-build
 ```
 
 Open <http://127.0.0.1:8790/>. The build copies an explicit list of HTML,
-CSS, JavaScript, the favicon, and all eight documentation PNGs. It never copies
+CSS, JavaScript, the favicon, and all ten documentation PNGs. It never copies
 the repository root, local environments, wallet datadirs, or model caches.
 Relative asset URLs support the GitHub Pages `/bill/` project path.
 
-The site uses optional Google Fonts with system fallbacks. The five-step
+The site uses optional Google Fonts with system fallbacks. The six-step
 explainer and diagram selector work without dependencies; the page remains
 readable with JavaScript disabled. Illustrations are conceptual, rather than
 photographs of the hardware or live wallet balances.
@@ -43,8 +43,11 @@ Workflow reference:
 - `docs/DESIGN.md` and `docs/PROTOCOL.md`: architecture, hardware, radio behavior.
 - `docs/RGB-TAP-LIVE.md`: accepted 20 USDT test transfer on 2026-10-11.
 - `docs/WEB-RGB-TEST.md`: accepted browser-driven physical transfer.
+- `docs/LIVE-EVIDENCE.md`: accepted bearer-note txids, hashes, balances, and
+  explicit proof boundaries.
+- `docs/OFFLINE-BEARER-RUNBOOK.md`: exact operator and recovery sequence.
 
 Keep the status copy aligned with those records. The browser-driven physical
-transfer is accepted. Local QVAC inference is verified; connecting it to the
-deterministic, confirmation-gated action flow remains the next integration
-gate.
+transfer and the offline bearer-note round trip are accepted. Local QVAC
+inference is verified; connecting it to the deterministic, confirmation-gated
+action flow remains an integration gate. WDK is not integrated.

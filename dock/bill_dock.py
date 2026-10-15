@@ -156,9 +156,14 @@ def decode_artifact_metadata(raw: bytes) -> ArtifactMetadata:
     version, direction, raw_kind, reserved, session_id, size, cents = struct.unpack(
         "<BBBBIII", raw
     )
-    if version not in (1, 2) or reserved != 0:
+    if version not in (1, 2, 3) or reserved != 0:
         raise ValueError("bill returned invalid artifact metadata header")
-    allowed_directions = (0, 1, 2) if version == 1 else (0, 1, 2, 3)
+    if version == 1:
+        allowed_directions = (0, 1, 2)
+    elif version == 2:
+        allowed_directions = (0, 1, 2, 3)
+    else:
+        allowed_directions = (0, 1, 2, 3, 4)
     if direction not in allowed_directions:
         raise ValueError("bill returned invalid artifact metadata direction")
     if direction == 0:
@@ -173,10 +178,24 @@ def decode_artifact_metadata(raw: bytes) -> ArtifactMetadata:
         kind = FrameKind(raw_kind)
     except ValueError as exc:
         raise ValueError("bill returned invalid artifact kind") from exc
-    if kind not in (FrameKind.INVOICE, FrameKind.CONSIGNMENT) or not size:
+    if kind not in (
+        FrameKind.INVOICE,
+        FrameKind.CONSIGNMENT,
+        FrameKind.BEARER_NOTE,
+    ) or not size:
         raise ValueError("bill returned incomplete artifact metadata")
+    if direction == 4 and kind is not FrameKind.BEARER_NOTE:
+        raise ValueError("bearer-held inventory does not contain a bearer note")
+    if kind is FrameKind.BEARER_NOTE and direction not in (3, 4):
+        raise ValueError("bearer note returned an invalid inventory direction")
     decoded_direction = (
-        "to-peer" if direction == 1 else "to-dock" if direction == 2 else "blocked"
+        "to-peer"
+        if direction == 1
+        else "to-dock"
+        if direction == 2
+        else "blocked"
+        if direction == 3
+        else "bearer-held"
     )
     return ArtifactMetadata(
         decoded_direction,
@@ -353,10 +372,12 @@ async def receive_chunk_file(
             raise ChunkProtocolError(
                 "bill storage recovery is required; inspect and explicitly discard the retained artifact before retrying"
             )
-        if metadata.direction != "to-dock":
+        if metadata.direction not in {"to-dock", "bearer-held"}:
             raise ChunkProtocolError(
                 "bill has no artifact ready for the dock; inspect the bill and tap first"
             )
+        if metadata.direction == "bearer-held" and metadata.kind is not FrameKind.BEARER_NOTE:
+            raise ChunkProtocolError("bill returned an invalid bearer-held inventory")
         if expected_kind is not None and metadata.kind != expected_kind:
             raise ChunkProtocolError(
                 f"bill contains {metadata.kind.name.lower()}, not {expected_kind.name.lower()}"
@@ -536,10 +557,10 @@ async def chunk_discard(timeout: float, address: str) -> int:
 
 def _frame_kind(value: str) -> FrameKind:
     try:
-        return FrameKind[value.upper()]
+        return FrameKind[value.upper().replace("-", "_")]
     except KeyError as exc:
         raise argparse.ArgumentTypeError(
-            "kind must be invoice or consignment"
+            "kind must be invoice, consignment, or bearer-note"
         ) from exc
 
 
@@ -567,12 +588,12 @@ def main(argv: list[str] | None = None) -> int:
     diagnostic_p.add_argument("--timeout", type=float, default=5.0)
     diagnostic_p.add_argument("--address", help="target this BLE address")
     chunk_send_p = sub.add_parser(
-        "chunk-send", help="stage one invoice or consignment on a bill"
+        "chunk-send", help="stage one invoice, consignment, or bearer note on a bill"
     )
     chunk_send_p.add_argument("--timeout", type=float, default=8.0)
     chunk_send_p.add_argument("--address", required=True)
     chunk_send_p.add_argument(
-        "--kind", choices=("invoice", "consignment"), required=True
+        "--kind", choices=("invoice", "consignment", "bearer-note"), required=True
     )
     chunk_send_p.add_argument("--input", type=Path, required=True)
     chunk_send_p.add_argument("--payload-bytes", type=int, default=DEFAULT_PAYLOAD_BYTES)
@@ -583,17 +604,20 @@ def main(argv: list[str] | None = None) -> int:
     chunk_loopback_p.add_argument("--timeout", type=float, default=8.0)
     chunk_loopback_p.add_argument("--address", required=True)
     chunk_loopback_p.add_argument(
-        "--kind", choices=("invoice", "consignment"), required=True
+        "--kind", choices=("invoice", "consignment", "bearer-note"), required=True
     )
     chunk_loopback_p.add_argument("--input", type=Path, required=True)
     chunk_loopback_p.add_argument("--payload-bytes", type=int, default=DEFAULT_PAYLOAD_BYTES)
     chunk_loopback_p.add_argument("--denomination-cents", type=int, default=0)
     chunk_receive_p = sub.add_parser(
-        "chunk-receive", help="receive a bill-originated invoice or consignment"
+        "chunk-receive",
+        help="receive a bill-originated invoice, consignment, or bearer note",
     )
     chunk_receive_p.add_argument("--timeout", type=float, default=8.0)
     chunk_receive_p.add_argument("--address", required=True)
-    chunk_receive_p.add_argument("--kind", choices=("invoice", "consignment"))
+    chunk_receive_p.add_argument(
+        "--kind", choices=("invoice", "consignment", "bearer-note")
+    )
     chunk_receive_p.add_argument("--session", type=_session_id)
     chunk_receive_p.add_argument("--output", type=Path, required=True)
     chunk_discard_p = sub.add_parser(

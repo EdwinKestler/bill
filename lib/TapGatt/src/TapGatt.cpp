@@ -27,7 +27,8 @@ uint32_t readLe32(const uint8_t* input) {
 
 bool validDataKind(uint8_t kind) {
   return kind == static_cast<uint8_t>(rgbbill::chunk::Kind::kInvoice) ||
-         kind == static_cast<uint8_t>(rgbbill::chunk::Kind::kConsignment);
+         kind == static_cast<uint8_t>(rgbbill::chunk::Kind::kConsignment) ||
+         kind == static_cast<uint8_t>(rgbbill::chunk::Kind::kBearerNote);
 }
 }  // namespace
 
@@ -89,6 +90,15 @@ void TapGatt::begin(BLEServer* server) {
     inboundReady_ = restoreArtifactMetadataLocked(
         INBOUND_META_PATH, INBOUND_PATH, inboundKind_, inboundSessionId_,
         inboundSize_, inboundDenominationCents_);
+    if (inboundReady_ &&
+        inboundKind_ ==
+            static_cast<uint8_t>(rgbbill::chunk::Kind::kBearerNote) &&
+        !promoteInboundBearerLocked()) {
+      storageBlockedByOrphan_ = true;
+      storageReady_ = false;
+      Serial.println(
+          "tap: bearer promotion recovery required; use chunk:discard explicitly");
+    }
     if ((SPIFFS.exists(OUTBOUND_PATH) && !outboundReady_) ||
         (SPIFFS.exists(INBOUND_PATH) && !inboundReady_)) {
       storageBlockedByOrphan_ = true;
@@ -485,6 +495,15 @@ void TapGatt::handleReceiverChunk(uint8_t* data, size_t length) {
       frame.total == receiverSession_.total() &&
       frame.sequence + 1U == frame.total &&
       frameCrc == receiverLastFrameCrc_;
+  const bool promotedBearerDuplicate =
+      outboundReady_ &&
+      outboundKind_ ==
+          static_cast<uint8_t>(rgbbill::chunk::Kind::kBearerNote) &&
+      frame.sessionId == outboundSessionId_ &&
+      static_cast<uint8_t>(frame.kind) == outboundKind_ &&
+      frame.total == receiverSession_.total() &&
+      frame.sequence + 1U == frame.total &&
+      frameCrc == receiverLastFrameCrc_;
   const bool activeDuplicate =
       receiverSession_.active() && !receiverSession_.complete() &&
       frame.sessionId == receiverSession_.sessionId() &&
@@ -492,7 +511,7 @@ void TapGatt::handleReceiverChunk(uint8_t* data, size_t length) {
       frame.total == receiverSession_.total() &&
       frame.sequence + 1U == receiverSession_.nextSequence() &&
       frameCrc == receiverLastFrameCrc_;
-  if (readyDuplicate || activeDuplicate) {
+  if (readyDuplicate || promotedBearerDuplicate || activeDuplicate) {
     result = rgbbill::chunk::Result::kOk;
   } else if (inboundReady_) {
     result = rgbbill::chunk::Result::kBusy;
@@ -541,12 +560,29 @@ void TapGatt::handleReceiverChunk(uint8_t* data, size_t length) {
             inboundSessionId_ = expectedMetadata_.sessionId;
             inboundSize_ = receiverSession_.bytesReceived();
             inboundDenominationCents_ = expectedMetadata_.denominationCents;
+            if (inboundKind_ ==
+                    static_cast<uint8_t>(
+                        rgbbill::chunk::Kind::kBearerNote) &&
+                !promoteInboundBearerLocked()) {
+              result = rgbbill::chunk::Result::kStorageFailure;
+              storageBlockedByOrphan_ = true;
+              storageReady_ = false;
+              queueReceiverAckLocked(frame, result);
+              xSemaphoreGive(mutex_);
+              return;
+            }
             receiverDisconnectAfterAck_ = true;
             Serial.printf(
                 "tap: receive complete kind=%u session=%08lx bytes=%u\n",
-                inboundKind_, static_cast<unsigned long>(inboundSessionId_),
-                static_cast<unsigned>(inboundSize_));
-            setStatus("TAP RECEIVED");
+                expectedMetadata_.kind,
+                static_cast<unsigned long>(expectedMetadata_.sessionId),
+                static_cast<unsigned>(receiverSession_.bytesReceived()));
+            setStatus(
+                expectedMetadata_.kind ==
+                        static_cast<uint8_t>(
+                            rgbbill::chunk::Kind::kBearerNote)
+                    ? "NOTE"
+                    : "TAP RECEIVED");
           }
         }
       }
@@ -680,6 +716,9 @@ void TapGatt::handleSenderChunk(const std::string& encoded) {
 }
 
 void TapGatt::finishSenderLocked(bool success) {
+  const bool wasBearer =
+      outboundKind_ ==
+      static_cast<uint8_t>(rgbbill::chunk::Kind::kBearerNote);
   if (outboundFile_) {
     outboundFile_.close();
   }
@@ -692,7 +731,7 @@ void TapGatt::finishSenderLocked(bool success) {
     outboundSize_ = 0;
     outboundDenominationCents_ = 0;
     updateMetadataLocked();
-    setStatus("TAP SENT");
+    setStatus(wasBearer ? "EMPTY" : "TAP SENT");
   } else {
     setStatus("TAP RETRY");
   }
@@ -720,6 +759,36 @@ void TapGatt::resetReceiverLocked(bool removeReady) {
     inboundSize_ = 0;
     inboundDenominationCents_ = 0;
   }
+}
+
+bool TapGatt::promoteInboundBearerLocked() {
+  if (!inboundReady_ ||
+      inboundKind_ !=
+          static_cast<uint8_t>(rgbbill::chunk::Kind::kBearerNote) ||
+      outboundReady_ || outboundActive_ || SPIFFS.exists(OUTBOUND_PATH) ||
+      SPIFFS.exists(OUTBOUND_META_PATH)) {
+    return false;
+  }
+  if (!SPIFFS.rename(INBOUND_PATH, OUTBOUND_PATH)) {
+    return false;
+  }
+  if (!SPIFFS.rename(INBOUND_META_PATH, OUTBOUND_META_PATH)) {
+    SPIFFS.rename(OUTBOUND_PATH, INBOUND_PATH);
+    return false;
+  }
+  outboundReady_ = true;
+  outboundKind_ = inboundKind_;
+  outboundSessionId_ = inboundSessionId_;
+  outboundSize_ = inboundSize_;
+  outboundDenominationCents_ = inboundDenominationCents_;
+  inboundReady_ = false;
+  inboundKind_ = 0;
+  inboundSessionId_ = 0;
+  inboundSize_ = 0;
+  inboundDenominationCents_ = 0;
+  updateMetadataLocked();
+  Serial.println("tap: bearer note promoted for offline relay");
+  return true;
 }
 
 void TapGatt::updateMetadataLocked() {
@@ -826,6 +895,38 @@ bool TapGatt::peekInboundTransfer(InboundTransfer& transfer) {
   return true;
 }
 
+bool TapGatt::peekOutboundTransfer(InboundTransfer& transfer) {
+  if (mutex_ == nullptr ||
+      xSemaphoreTake(mutex_, portMAX_DELAY) != pdTRUE) {
+    return false;
+  }
+  if (outboundReady_ && !SPIFFS.exists(OUTBOUND_PATH)) {
+    // DockGatt deletes the file only after the laptop ACKs the final frame.
+    // Reconcile the TapGatt sidecar/state on the following main-loop pass.
+    SPIFFS.remove(OUTBOUND_META_PATH);
+    outboundReady_ = false;
+    outboundKind_ = 0;
+    outboundSessionId_ = 0;
+    outboundSize_ = 0;
+    outboundDenominationCents_ = 0;
+    updateMetadataLocked();
+  }
+  if (!outboundReady_ || outboundActive_ ||
+      outboundKind_ !=
+          static_cast<uint8_t>(rgbbill::chunk::Kind::kBearerNote)) {
+    xSemaphoreGive(mutex_);
+    return false;
+  }
+  transfer.kind = outboundKind_;
+  transfer.sessionId = outboundSessionId_;
+  transfer.size = outboundSize_;
+  transfer.denominationCents = outboundDenominationCents_;
+  strncpy(transfer.path, OUTBOUND_PATH, sizeof(transfer.path) - 1);
+  transfer.path[sizeof(transfer.path) - 1] = '\0';
+  xSemaphoreGive(mutex_);
+  return true;
+}
+
 bool TapGatt::artifactState(ArtifactState& state) const {
   if (mutex_ == nullptr ||
       xSemaphoreTake(mutex_, portMAX_DELAY) != pdTRUE) {
@@ -835,7 +936,11 @@ bool TapGatt::artifactState(ArtifactState& state) const {
   if (storageBlockedByOrphan_) {
     state.direction = 3;
   } else if (outboundReady_) {
-    state.direction = 1;
+    state.direction =
+        outboundKind_ ==
+                static_cast<uint8_t>(rgbbill::chunk::Kind::kBearerNote)
+            ? 4
+            : 1;
     state.kind = outboundKind_;
     state.sessionId = outboundSessionId_;
     state.size = outboundSize_;

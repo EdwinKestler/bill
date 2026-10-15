@@ -20,6 +20,7 @@ ideas/bill/                 this project (git + PlatformIO root)
   scripts/qvac_smoke.py     worker heartbeat + GPU flags; no GGUF
   scripts/qvac_fetch_instruct.py  QWEN3_600M_INST_Q4 into .qvac + one completion
   scripts/rgb_tap.py        real invoice/consignment wallet-to-BLE operator flow
+  scripts/note_wallet_live.py  disposable-note funding/redemption gates + refresh
   .vscode/extensions.json   PlatformIO IDE + Python
   include/config.h          pins + frozen dock UUIDs
   src/main.cpp              firmware entry (composition only)
@@ -51,6 +52,11 @@ ideas/bill/                 this project (git + PlatformIO root)
     TTGO-LORA32-V1.3-TEST.md    second bill hardware test protocol
     RGB-TAP-LIVE.md         controlled real-wallet tap acceptance and recovery
     WEB-RGB-TEST.md         browser-driven two-dock acceptance and API contract
+    OFFLINE-RGB-DEMO-DESIGN.md  selected trusted-vault architecture and gaps
+    OFFLINE-BEARER-RUNBOOK.md  exact accepted operator procedure and recovery
+    LIVE-EVIDENCE.md        canonical public txids, hashes, balances, status
+    THREAT-MODEL.md         prototype trust boundaries and failure policy
+    diagrams/               editable Mermaid, rendered PNGs, render instructions
   .agents/skills/
     source-cache/           Palimnex from rgbhackathon root
     bill-firmware/          PlatformIO / ESP32

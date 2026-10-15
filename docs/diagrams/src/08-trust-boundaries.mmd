@@ -1,44 +1,47 @@
 flowchart LR
     classDef trusted fill:#dcfce7,stroke:#16803a,color:#12351f,stroke-width:2px
     classDef device fill:#dbeafe,stroke:#2563eb,color:#172554,stroke-width:2px
-    classDef planned fill:#fef3c7,stroke:#d97706,color:#4a2b05,stroke-width:2px,stroke-dasharray:6 4
     classDef external fill:#f1f5f9,stroke:#64748b,color:#1e293b,stroke-width:2px
+    classDef warning fill:#fff7ed,stroke:#ea580c,color:#431407,stroke-width:2px
     classDef denied fill:#fee2e2,stroke:#dc2626,color:#450a0a,stroke-width:2px
 
-    human["Human confirmation boundary"]:::trusted
+    human["Human exact confirmation"]:::trusted
 
-    subgraph custodyA["Custody boundary A"]
-        mnemonicA["Mnemonic A mode 0600"]:::trusted
-        datadirA["rgb-lib datadir A and one-process lock"]:::trusted
-        walletA["Wallet A policy adapter"]:::trusted
-        mnemonicA --> walletA
-        datadirA --> walletA
+    subgraph custodyA["Dock A custody"]
+        walletA["Wallet A mnemonic datadir and lock"]:::trusted
     end
 
-    subgraph radioBoundary["Non-custodial bill boundary"]
-        billA["Bill A ESP32 | display radio chunks only"]:::device
-        billB["Bill B ESP32 | display radio chunks only"]:::device
-        billA <-.->|"short-lived gated tap"| billB
+    subgraph vaultBoundary["Trusted note-vault custody"]
+        noteN["Disposable note wallet N keys"]:::warning
+        journal["Plan claim hash and recovery journal"]:::trusted
+        noteN --> journal
     end
 
-    subgraph custodyB["Custody boundary B"]
-        mnemonicB["Mnemonic B mode 0600"]:::trusted
-        datadirB["rgb-lib datadir B and one-process lock"]:::trusted
-        walletB["Wallet B OOB import adapter"]:::trusted
-        mnemonicB --> walletB
-        datadirB --> walletB
+    subgraph physical["Extractable physical bearer boundary"]
+        billA["ESP32 Bill A | opaque capability"]:::device
+        billB["ESP32 Bill B | opaque capability"]:::device
+        copyRisk["Copied capsule | first redemption wins"]:::warning
+        billA <-.->|"unauthenticated proximity BLE"| billB
+        copyRisk -.-> billA
+        copyRisk -.-> billB
+    end
+
+    subgraph custodyB["Dock B custody"]
+        walletB["Wallet B mnemonic datadir and lock"]:::trusted
+        verifier["Exact txid assignment and balance verifier"]:::trusted
+        walletB --> verifier
     end
 
     chain["Mutinynet indexer and Bitcoin network"]:::external
-    proxy["KaleidoSwap proxy | bootstrap faucet only"]:::external
-    wifiDenied["No dock-to-dock Wi-Fi consignment transport"]:::denied
-    phoneDenied["No phone app or QR required for tap"]:::denied
+    wifiDenied["No dock-to-dock network payload transport"]:::denied
+    secretDenied["No mnemonic claim secret or capsule in public logs"]:::denied
 
-    human -->|"one-use exact plan approval"| walletA
-    walletA -->|"signed witness transaction"| chain
-    walletB -->|"refresh and validate"| chain
-    walletA -.->|"implemented opaque GATT-dock chunks"| billA
-    billB -.->|"implemented opaque GATT-dock chunks"| walletB
-    walletA -->|"bootstrap receive exception"| proxy
+    human -->|"fresh one-use plan approval"| walletA
+    human -->|"fresh one-use redemption approval"| journal
+    walletA -->|"RGB funding"| chain
+    noteN -->|"RGB redemption"| chain
+    walletB -->|"refresh validation"| chain
+    journal -->|"canonical capsule"| billA
+    billB -->|"exact extracted capsule"| walletB
     walletA -.-> wifiDenied
-    billA -.-> phoneDenied
+    noteN -.-> secretDenied

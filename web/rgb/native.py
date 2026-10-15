@@ -42,6 +42,23 @@ class RgbLibBackend:
 
     @classmethod
     def open(cls, settings: RgbSettings) -> RgbLibBackend:
+        backend = cls.load_offline(settings)
+        try:
+            online_options = backend._rgb.OnlineOptions(
+                indexer_url=settings.electrum_url,
+                skip_consistency_check=False,
+                vanilla_sync_lookback=20,
+            )
+            backend._online = backend._wallet.go_online(online_options)
+        except Exception:
+            backend.close()
+            raise
+        return backend
+
+    @classmethod
+    def load_offline(cls, settings: RgbSettings) -> RgbLibBackend:
+        """Load one locked wallet without contacting an indexer."""
+
         if settings.master_fingerprint is None:
             raise SettingsError("active bill master fingerprint is not configured")
         mnemonic = settings.read_mnemonic()
@@ -71,19 +88,13 @@ class RgbLibBackend:
             wallet_data = wallet.get_wallet_data()
             if wallet_data.bitcoin_network != rgb_lib.BitcoinNetwork.SIGNET_CUSTOM:
                 raise RgbLibUnavailable("wallet network is not Mutinynet/custom signet")
-            online_options = rgb_lib.OnlineOptions(
-                indexer_url=settings.electrum_url,
-                skip_consistency_check=False,
-                vanilla_sync_lookback=20,
-            )
-            online = wallet.go_online(online_options)
         except Exception:
             process_lock.release()
             raise
         return cls(
             rgb_lib=rgb_lib,
             wallet=wallet,
-            online=online,
+            online=None,
             process_lock=process_lock,
         )
 

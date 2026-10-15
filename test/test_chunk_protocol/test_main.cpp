@@ -113,6 +113,26 @@ void test_receive_session_enforces_total_size_limit() {
   TEST_ASSERT_FALSE(session.complete());
 }
 
+void test_bearer_note_is_a_supported_data_kind() {
+  const std::array<uint8_t, 3> payload = {4, 5, 6};
+  std::array<uint8_t, rgbbill::chunk::MAX_FRAME_SIZE> encoded{};
+  size_t encodedLength = 0;
+  TEST_ASSERT_TRUE(rgbbill::chunk::encodeFrame(
+      Kind::kBearerNote, 0xAABBCCDDU, 0, 1, payload.data(), payload.size(),
+      encoded.data(), encoded.size(), encodedLength));
+  FrameView decoded;
+  TEST_ASSERT_EQUAL_UINT8(
+      static_cast<uint8_t>(Result::kOk),
+      static_cast<uint8_t>(rgbbill::chunk::decodeFrame(
+          encoded.data(), encodedLength, decoded)));
+  ReceiveSession session(16);
+  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(Result::kOk),
+                          static_cast<uint8_t>(session.accept(decoded)));
+  TEST_ASSERT_TRUE(session.complete());
+  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(Kind::kBearerNote),
+                          static_cast<uint8_t>(session.kind()));
+}
+
 }  // namespace
 
 int main(int, char**) {
@@ -121,5 +141,6 @@ int main(int, char**) {
   RUN_TEST(test_crc_corruption_is_rejected);
   RUN_TEST(test_receive_session_requires_order_and_matching_metadata);
   RUN_TEST(test_receive_session_enforces_total_size_limit);
+  RUN_TEST(test_bearer_note_is_a_supported_data_kind);
   return UNITY_END();
 }

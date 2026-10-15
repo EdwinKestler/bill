@@ -20,6 +20,8 @@ DIAGRAMS = (
     "06-chunk-frame",
     "07-bill-hardware",
     "08-trust-boundaries",
+    "09-live-evidence-timeline",
+    "10-note-vault-state",
 )
 
 

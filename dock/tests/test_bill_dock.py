@@ -208,6 +208,109 @@ def test_artifact_inventory_v1_rejects_blocked_direction():
         bill_dock.decode_artifact_metadata(raw)
 
 
+def test_artifact_inventory_v3_decodes_bearer_held_note():
+    raw = (
+        bytes([3, 4, int(bill_dock.FrameKind.BEARER_NOTE), 0])
+        + (0xAABBCCDD).to_bytes(4, "little")
+        + (603).to_bytes(4, "little")
+        + (500).to_bytes(4, "little")
+    )
+
+    artifact = bill_dock.decode_artifact_metadata(raw)
+
+    assert artifact.direction == "bearer-held"
+    assert artifact.kind is bill_dock.FrameKind.BEARER_NOTE
+    assert artifact.session_id == 0xAABBCCDD
+    assert artifact.size == 603
+    assert artifact.denomination_cents == 500
+
+
+def test_artifact_inventory_v2_rejects_bearer_direction():
+    raw = bytes([2, 4, int(bill_dock.FrameKind.BEARER_NOTE), 0]) + bytes(12)
+
+    with pytest.raises(ValueError, match="direction"):
+        bill_dock.decode_artifact_metadata(raw)
+
+
+def test_artifact_inventory_v3_rejects_non_bearer_in_held_direction():
+    raw = (
+        bytes([3, 4, int(bill_dock.FrameKind.INVOICE), 0])
+        + (1).to_bytes(4, "little")
+        + (10).to_bytes(4, "little")
+        + (500).to_bytes(4, "little")
+    )
+
+    with pytest.raises(ValueError, match="does not contain"):
+        bill_dock.decode_artifact_metadata(raw)
+
+
+def test_cli_kind_parser_accepts_bearer_note_name():
+    assert bill_dock._frame_kind("bearer-note") is bill_dock.FrameKind.BEARER_NOTE
+
+
+def test_receive_chunk_file_accepts_bearer_held_inventory(monkeypatch, tmp_path):
+    device, _advertisement = _sighting()
+    session_id = 0x3DE6F5E7
+    payload = b"live-bearer-capsule"
+    metadata = (
+        bytes([3, 4, int(bill_dock.FrameKind.BEARER_NOTE), 0])
+        + session_id.to_bytes(4, "little")
+        + len(payload).to_bytes(4, "little")
+        + (500).to_bytes(4, "little")
+    )
+
+    async def fake_find_target(_timeout, _address=None):
+        return device
+
+    class FakeClient:
+        def __init__(self, selected_device, timeout):
+            assert selected_device is device
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, traceback):
+            return False
+
+        async def read_gatt_char(self, uuid):
+            assert uuid == bill_dock.ARTIFACT_META
+            return metadata
+
+    class FakeTransport:
+        def __init__(self, client, chunk_in, chunk_out, timeout):
+            assert isinstance(client, FakeClient)
+
+        async def start(self):
+            return None
+
+        async def receive(self, *, expected_kind, expected_session_id):
+            assert expected_kind is bill_dock.FrameKind.BEARER_NOTE
+            assert expected_session_id == session_id
+            return bill_dock.FrameKind.BEARER_NOTE, session_id, payload
+
+        async def stop(self):
+            return None
+
+    monkeypatch.setattr(bill_dock, "_find_target", fake_find_target)
+    monkeypatch.setattr(bill_dock, "BleakClient", FakeClient)
+    monkeypatch.setattr(bill_dock, "ChunkTransport", FakeTransport)
+    output = tmp_path / "received.rgbn"
+
+    kind, actual_session, size = asyncio.run(
+        bill_dock.receive_chunk_file(
+            0.1,
+            device.address,
+            output,
+            expected_kind=bill_dock.FrameKind.BEARER_NOTE,
+        )
+    )
+
+    assert kind is bill_dock.FrameKind.BEARER_NOTE
+    assert actual_session == session_id
+    assert size == len(payload)
+    assert output.read_bytes() == payload
+
+
 def test_artifact_inventory_rejects_nonempty_empty_state():
     raw = bytes([1, 0, 1, 0]) + bytes(12)
 

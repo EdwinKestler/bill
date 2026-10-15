@@ -29,7 +29,8 @@ class TapGatt {
   };
 
   struct ArtifactState {
-    // 0 empty, 1 bill-to-peer, 2 bill-to-dock, 3 recovery blocked.
+    // 0 empty, 1 bill-to-peer, 2 bill-to-dock, 3 recovery blocked,
+    // 4 bearer-held (ready for another offline tap).
     uint8_t direction = 0;
     uint8_t kind = 0;
     uint32_t sessionId = 0;
@@ -44,6 +45,7 @@ class TapGatt {
   bool stageOutbound(uint8_t kind, uint32_t sessionId, size_t size,
                      uint32_t denominationCents, const char* path);
   bool peekInboundTransfer(InboundTransfer& transfer);
+  bool peekOutboundTransfer(InboundTransfer& transfer);
   bool artifactState(ArtifactState& state) const;
   void discardStaged();
   bool takeStatusUpdate(char* status, size_t statusSize);
@@ -90,6 +92,7 @@ class TapGatt {
   void pollSenderLocked(uint32_t now);
   void finishSenderLocked(bool success);
   void resetReceiverLocked(bool removeReady);
+  bool promoteInboundBearerLocked();
   void queueReceiverAckLocked(const rgbbill::chunk::FrameView& frame,
                               rgbbill::chunk::Result result);
   void updateMetadataLocked();

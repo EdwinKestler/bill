@@ -8,7 +8,7 @@ flowchart TB
         boardA["ESP32-D0WDQ6 | 4 MB flash"]:::board
         oled["SSD1306 OLED | 128 by 64 | SDA21 SCL22"]:::peripheral
         led["Status LED | GPIO5"]:::peripheral
-        button["TTP223 digital touch | GPIO12 active high | release at reset"]:::planned
+        button["TTP223 digital touch | GPIO12 active high | release at reset"]:::peripheral
         usbA["CP2104 USB UART | stable by-id path"]:::peripheral
         boardA --> oled
         boardA --> led

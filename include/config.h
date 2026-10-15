@@ -85,6 +85,15 @@ constexpr uint8_t OLED_ADDRESS_SECONDARY = 0x3D;
 
 constexpr uint32_t SESSION_TIMEOUT_MS = 300000;
 
+namespace ArtifactInventory {
+constexpr uint8_t VERSION = 0x03;
+constexpr uint8_t EMPTY = 0;
+constexpr uint8_t TO_PEER = 1;
+constexpr uint8_t TO_DOCK = 2;
+constexpr uint8_t RECOVERY_BLOCKED = 3;
+constexpr uint8_t BEARER_HELD = 4;
+}  // namespace ArtifactInventory
+
 // Dock core v1 UUIDs, frozen after the first successful hardware session.
 namespace BLE_UUIDs {
 constexpr char DOCK_SERVICE[] = "7c3e9a10-4b1e-4c8f-9d2a-00b111d0c001";

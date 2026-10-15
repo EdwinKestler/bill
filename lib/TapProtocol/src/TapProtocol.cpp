@@ -19,6 +19,12 @@ void writeLe32(uint8_t* output, uint32_t value) {
 
 }  // namespace
 
+bool isSupportedVersion(uint8_t version, size_t length) {
+  return (version == LEGACY_VERSION && length == LEGACY_METADATA_SIZE) ||
+         ((version == PREVIOUS_VERSION || version == VERSION) &&
+          length == METADATA_SIZE);
+}
+
 bool encodeMetadata(const Metadata& metadata, uint8_t* output,
                     size_t capacity) {
   if (output == nullptr || capacity < METADATA_SIZE ||
@@ -39,12 +45,8 @@ bool encodeMetadata(const Metadata& metadata, uint8_t* output,
 
 bool decodeMetadata(const uint8_t* encoded, size_t length,
                     Metadata& metadata) {
-  if (encoded == nullptr ||
-      (length != LEGACY_METADATA_SIZE && length != METADATA_SIZE) ||
-      (encoded[0] != LEGACY_VERSION && encoded[0] != VERSION) ||
-      (encoded[0] == LEGACY_VERSION && length != LEGACY_METADATA_SIZE) ||
-      (encoded[0] == VERSION && length != METADATA_SIZE) || encoded[3] != 0 ||
-      encoded[1] > 1) {
+  if (encoded == nullptr || !isSupportedVersion(encoded[0], length) ||
+      encoded[3] != 0 || encoded[1] > 1) {
     return false;
   }
   metadata.version = encoded[0];

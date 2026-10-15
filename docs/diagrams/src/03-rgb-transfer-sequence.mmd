@@ -1,56 +1,47 @@
 sequenceDiagram
     autonumber
-    actor human as Human
-    participant dockB as Dock B and wallet B
-    participant billB as Bill B
+    actor personA as Person A
+    participant walletA as Wallet A / Dock A
+    participant vault as Note vault / wallet N
     participant billA as Bill A
-    participant dockA as Dock A and wallet A
+    participant billB as Bill B
+    participant walletB as Wallet B / Dock B
     participant chain as Mutinynet
 
+    rect rgb(220, 252, 231)
+        walletA->>vault: Prepare fresh transport-free invoice and immutable plan
+        vault-->>personA: Show exact 5 USDT funding plan
+        personA->>vault: CONFIRM fresh plan id
+        walletA->>chain: RGB funding transaction A to N
+        vault->>chain: Refresh exact receive to SETTLED
+        vault->>billA: Load canonical 603-byte bearer capsule
+    end
+
     rect rgb(239, 246, 255)
-        human->>dockB: Receive USDT
-        dockB->>billB: Read inventory EMPTY
-        dockB->>dockB: Create generic witness invoice
-        dockB->>dockB: Require SIGNET_CUSTOM and empty endpoints
-        dockB-->>billB: Invoice bytes over implemented GATT-dock chunks
-        billB-->>human: Display 5 dollars INVOICE TAP
-        human->>billA: Press once near Bill B
-        billB-->>billA: Invoice chunks over gated GATT-tap
-        billA-->>human: Display 5 dollars INVOICE DOCK
-        human->>dockA: Send USDT
-        dockA->>billA: Read inventory then exact invoice
-        billA-->>dockA: Invoice bytes over implemented GATT-dock chunks
+        Note over billA,billB: Docks and Internet may be unavailable
+        personA->>billB: Press empty receiver once
+        billA-->>billB: BLE kind 04 chunks with ACK and CRC32
+        billB->>billB: Atomically promote bearer-held
+        billB->>billB: Reboot and restore same metadata
     end
 
     rect rgb(254, 249, 195)
-        dockA->>dockA: Read exact spendable RGB balance
-        dockA-->>human: Show immutable amount recipient fee and expiry
-        human->>dockA: Exact one-use CONFIRM plan id
-        dockA->>dockA: Recheck unchanged balance
-        dockA->>chain: donation send with witness output
-        chain-->>dockA: Broadcast txid and confirmation
-        dockA->>dockA: Hash exact rgb-lib consignment bytes
-    end
-
-    rect rgb(239, 246, 255)
-        dockA-->>billA: Consignment plus denomination over GATT-dock
-        billA-->>human: Display 5 dollars PROOF TAP
-        human->>billB: Press once near Bill A
-        billA-->>billB: Consignment binary frames over gated GATT-tap
-        billB-->>human: Display 5 dollars PROOF DOCK
-        human->>dockB: Receive USDT
-        dockB->>billB: Read inventory then exact consignment
+        billB-->>walletB: Extract exact capsule through dock CHUNK_OUT
+        walletB->>walletB: Persist privately and verify source SHA-256
+        walletB->>vault: Fresh Wallet B invoice and claim capability
+        vault-->>personA: Show immutable redemption plan
+        personA->>vault: CONFIRM fresh redemption plan id
+        vault->>chain: RGB redemption transaction N to B
+        vault-->>walletB: Exact retained OOB consignment
     end
 
     rect rgb(220, 252, 231)
-        dockB->>dockB: Verify content hash and persist isolated inbox copy
-        dockB->>dockB: provide_out_of_band_consignment
-        dockB->>chain: Refresh and validate witness anchor
-        chain-->>dockB: One confirmation
-        billB-->>human: Inventory empty and amount hidden
-        billA-->>human: Inventory empty and amount hidden
+        walletB->>walletB: Import exact consignment
+        walletB->>chain: Refresh one matching receive_witness
+        chain-->>walletB: Confirmed anchor
+        walletB->>walletB: Verify 5,000,000 assignment and balance delta
+        walletB-->>personA: REDEEMED | claim SPENT | no resend
     end
 
-    Note over dockA,dockB: No proxy endpoint and no dock-to-dock Wi-Fi consignment path
-    Note over dockA,dockB: Donation mode has no receiver ACK gate
-    Note over dockA,dockB: Inventory revision is build verified and awaiting physical acceptance
+    Note over walletA,walletB: Exactly two RGB transitions<br/>The offline BLE hop moves a bearer capability
+    Note over vault,walletB: Trusted-vault Mutinynet prototype<br/>A copied capsule is first-redemption-wins
