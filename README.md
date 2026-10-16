@@ -98,7 +98,7 @@ second silo. See [docs/LOOKUP.md](docs/LOOKUP.md).
 ## Humans
 
 The public project website is deployed at
-<https://edwinkestler.github.io/bill/>. Source, local preview, and deployment
+<https://fork2checkbook.github.io/fork2checkbook/>. Source, local preview, and deployment
 instructions are in [site/README.md](site/README.md).
 
 1. Open **this folder** in VS Code (`File → Open Folder` on `ideas/bill`).

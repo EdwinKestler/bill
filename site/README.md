@@ -18,7 +18,7 @@ python3 -m http.server 8790 --bind 127.0.0.1 --directory .site-build
 Open <http://127.0.0.1:8790/>. The build copies an explicit list of HTML,
 CSS, JavaScript, the favicon, and all ten documentation PNGs. It never copies
 the repository root, local environments, wallet datadirs, or model caches.
-Relative asset URLs support the GitHub Pages `/bill/` project path.
+Relative asset URLs support the GitHub Pages `/fork2checkbook/` project path.
 
 The site uses optional Google Fonts with system fallbacks. The six-step
 explainer and diagram selector work without dependencies; the page remains
@@ -30,7 +30,7 @@ photographs of the hardware or live wallet balances.
 In GitHub repository Settings → Pages, choose **GitHub Actions** as the source.
 The workflow at `.github/workflows/pages.yml` packages `.site-build/` and deploys
 on relevant pushes to `main`, or through a manual workflow run. Expected URL:
-<https://edwinkestler.github.io/bill/>.
+<https://fork2checkbook.github.io/fork2checkbook/>.
 
 The repository and Pages configuration are public. Deployment uses only the
 explicit `.site-build/` allowlist produced by `scripts/build_site.py`; it never

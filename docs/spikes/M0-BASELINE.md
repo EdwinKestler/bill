@@ -31,7 +31,7 @@ human authorized entry into M1 after this re-evaluation.
 | RgbBill inventory | PASS | `idle`; denomination `0`; `artifact=empty:empty` |
 | RgbBill-TTGO inventory | PASS | `idle`; denomination `0`; `artifact=empty:empty` |
 | Repository visibility | PASS | Authenticated and anonymous GitHub metadata report `PUBLIC`; unauthenticated repository API returns HTTP 200 |
-| GitHub Pages | PASS | <https://edwinkestler.github.io/bill/> returns HTTP 200; the allowlisted build and deploy jobs passed at commit `303134c` |
+| GitHub Pages | PASS | The allowlisted build and deploy jobs passed at commit `303134c`; after the repository rebrand and transfer, the current site is <https://fork2checkbook.github.io/fork2checkbook/> |
 
 ## Existing direct-mode RGB evidence
 
