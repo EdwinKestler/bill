@@ -12,6 +12,25 @@ The project was previously developed under the working name **RGB Cash Bill**.
 The frozen BLE device name `RgbBill`, UUIDs, source paths, and historical
 evidence retain that technical name for compatibility.
 
+## Project goal
+
+**fork2checkbook** explores how to recover a useful property of a paper
+checkbook in digital form: a person can prepare portable value at their own
+dock, walk away, hand it to another person without either party being online,
+and let the eventual holder redeem it later at a different dock. The recipient
+wallet does not have to be known when the value is created, and intermediate
+carriers do not need a wallet, account, dock, or network connection.
+
+The design aims for minimal identity disclosure and practical fungibility:
+equal-denomination notes should be used in the same way regardless of their
+holders or route. These are goals, not claims of perfect cryptographic
+anonymity or fungibility. Bitcoin and RGB settlement history may still be
+correlated. This hackathon prototype also deliberately accepts and documents
+risks that a production system must solve: copied capsules and double-spend
+races, first-redemption-wins behavior, loss or theft of a bearer device,
+trusted online custody of disposable note keys, delayed settlement, and
+denial-of-service. It runs on Mutinynet and must not be treated as real money.
+
 ## Team
 
 **Team name:** fork2checkbook
