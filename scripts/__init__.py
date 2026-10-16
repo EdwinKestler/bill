@@ -1,1 +1,1 @@
-"""Operator and setup helpers for the RGB bill project."""
+"""Operator and setup helpers for fork2checkbook."""

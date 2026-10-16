@@ -572,7 +572,7 @@ def _session_id(value: str) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="RGB cash bill dock")
+    parser = argparse.ArgumentParser(description="fork2checkbook dock")
     sub = parser.add_subparsers(dest="cmd", required=True)
     scan_p = sub.add_parser("scan", help="list nearby RgbBill advertisements")
     scan_p.add_argument("--timeout", type=float, default=5.0)

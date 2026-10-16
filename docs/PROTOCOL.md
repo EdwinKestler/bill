@@ -112,6 +112,17 @@ On every Connect, Send, or Receive action, the dock reads `IDENTITY`, `STATUS`,
 and direction select CHUNK_IN versus CHUNK_OUT; human wording never selects a
 blind read.
 
+### Planned touchscreen input profile
+
+The planned LilyGO T-Watch 2020 V1 app changes only the local input and display
+adapter. Selecting **Receive note** on the watch is the same rising-edge,
+one-shot event as pressing GPIO12 on the accepted boards: it arms one
+15-second receiver window and does not need to be held. A second selection
+cancels. All GATT UUIDs, inventory bytes, artifact kinds, chunk frames, RSSI
+qualification, ACK semantics, persistence rules, and recovery behavior remain
+byte-for-byte compatible. Touch navigation is never a spend confirmation;
+exact RGB spend confirmation remains on the laptop dock.
+
 ## Dock service (`7c3e9a10-4b1e-4c8f-9d2a-00b111d0c001`)
 
 Laptop is central. Bill is peripheral. One active transfer per connection.

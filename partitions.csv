@@ -1,4 +1,4 @@
-# RGB bill 4 MiB flash layout. One 3 MiB factory app; intentionally no OTA slot.
+# fork2checkbook 4 MiB flash layout. One 3 MiB factory app; intentionally no OTA slot.
 # Name,   Type, SubType, Offset,  Size, Flags
 nvs,      data, nvs,     0x9000,  0x5000,
 app0,     app,  factory, 0x10000, 0x300000,

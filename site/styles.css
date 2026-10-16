@@ -1071,7 +1071,7 @@ dd {
   color: #899c83;
   margin: 0;
 }
-.footer > a:last-child {
+.footer > p:last-child {
   font-size: 10px;
   color: var(--muted);
 }
@@ -1265,7 +1265,7 @@ dd {
   .footer > p {
     margin-left: auto;
   }
-  .footer > a:last-child {
+  .footer > p:last-child {
     margin-left: auto;
   }
   .doc-links {
@@ -1287,11 +1287,12 @@ dd {
     gap: 15px;
   }
   .header .wordmark {
-    font-size: 25px;
+    font-size: 19px;
+    letter-spacing: -1px;
   }
   .brand-icon {
-    font-size: 29px;
-    margin-right: 8px;
+    font-size: 25px;
+    margin-right: 6px;
   }
   .header nav {
     display: none;
@@ -1576,7 +1577,7 @@ dd {
   .footer > p {
     font-size: 8px;
   }
-  .footer > a:last-child {
+  .footer > p:last-child {
     font-size: 9px;
   }
 }

@@ -37,6 +37,14 @@ targets WEMOS LOLIN32 / ESP32-WROOM-32; `oled-test` is the display diagnostic.
 Build with `ideas/bill/.venv-platformio/bin/pio run`. BLE patterns from
 `/media/kestl/andor/github/waveshares3` (GATT session, notify, write-with-response).
 Do not copy locker UUIDs, `0xA4`, barcodes, or relays.
+For the planned wearable profile, read
+`ideas/bill/docs/TTGO-WATCH-APP-PLAN.md` and inspect the read-only local
+T-Watch 2020 V1 reference at
+`/media/kestl/xwing/Old_documents/Documents/PlatformIO/Projects/My-TTGO-Watch`.
+Keep the dock, rgb-lib, note vault, QVAC, network, and spend confirmation on
+the laptop. The watch target keeps only a basic clock/home screen and RGB Bill
+app; exclude the other reference apps and phone/network services. Do not edit
+or flash the reference tree without a separate human request.
 
 **Dock radio:** `ideas/bill/.venv` + Bleak. `python -m dock.bill_dock scan`.
 **Dock web:** `python -m web.server` (http://127.0.0.1:8788/). Python is the

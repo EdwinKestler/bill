@@ -1,11 +1,27 @@
-# RGB cash bill
+# fork2checkbook
 
-Physical digital dollars. A dock funds a disposable $5 RGB note, an ESP32 bill
+**fork2checkbook** turns RGB value into a physical, offline handoff. A dock
+funds a disposable $5 RGB note, an ESP32 bill
 carries its compact bearer capability, and one tap relays that capability to
 another bill with both docks and the Internet unavailable. The final holder
 later redeems into a wallet that was unknown when the note was created.
 Bitcoin Mutinynet anchors the two real RGB transitions. No QR and no phone app
 are required for the offline handoff.
+
+The project was previously developed under the working name **RGB Cash Bill**.
+The frozen BLE device name `RgbBill`, UUIDs, source paths, and historical
+evidence retain that technical name for compatibility.
+
+## Team
+
+**Team name:** fork2checkbook
+
+- **Edwin Kestler** — [@EdwinKestler](https://github.com/EdwinKestler) —
+  project owner and lead.
+- **Anonymous0304** —
+  [@creatorofsomethingthatisgood](https://github.com/creatorofsomethingthatisgood)
+  — collaborator; submitted the visual design for the public project page
+  and the Python dock frontend.
 
 ## Hackathon delivery mode
 
@@ -20,9 +36,6 @@ innovation 10%, and marketability 10%. A meaningful WDK integration can add up
 to one bonus point. The priority is therefore a clear live RGB + QVAC flow;
 WDK follows only if that primary path is stable.
 
-Project/team working name: **RGB Cash Bill**. Repository owner:
-**Edwin Kestler ([EdwinKestler](https://github.com/EdwinKestler))**.
-
 ### Declared pre-start baseline
 
 The existing Git history is intentional prior-work evidence. Before the final
@@ -31,7 +44,9 @@ delivery phase, the repository already contained:
 - two ESP32 bill profiles with OLED, touch, BLE inventory, chunking, and tap;
 - two isolated rgb-lib Mutinynet wallets and confirmed witness/OOB transfers;
 - a confirmation-gated Python web dock with retained-artifact recovery;
-- a prepared project website and local QVAC installation/smoke tooling.
+- a prepared project website and local QVAC installation/smoke tooling;
+- visual designs for the project website and Python dock frontend submitted
+  by Anonymous0304 and subsequently integrated into this repository.
 
 QVAC was not yet the accepted user-facing intent layer, WDK was not integrated,
 and anonymous multi-hop offline bearer circulation was not implemented. Final
@@ -98,6 +113,8 @@ Offline bearer-note decision and proof plan:
 [docs/OFFLINE-RGB-DEMO-DESIGN.md](docs/OFFLINE-RGB-DEMO-DESIGN.md).
 Accepted bearer-note operator sequence:
 [docs/OFFLINE-BEARER-RUNBOOK.md](docs/OFFLINE-BEARER-RUNBOOK.md).
+Planned T-Watch 2020 V1 bill-app port:
+[docs/TTGO-WATCH-APP-PLAN.md](docs/TTGO-WATCH-APP-PLAN.md).
 Canonical transaction and acceptance ledger:
 [docs/LIVE-EVIDENCE.md](docs/LIVE-EVIDENCE.md). Threat model:
 [docs/THREAT-MODEL.md](docs/THREAT-MODEL.md).
@@ -117,12 +134,14 @@ Search Palimnex from `/media/kestl/andor/github/rgbhackathon`. Skills under
 | Layer | Tech |
 | --- | --- |
 | Bill radio | WEMOS LOLIN32 / ESP32-WROOM-32, Arduino, PlatformIO `esp32-bill` |
+| Planned wearable bill | LilyGO T-Watch 2020 V1; minimal clock + RGB Bill touchscreen firmware implementing the same frozen GATT contract |
 | Dock radio | Python 3.10+, Bleak 3.0.2 (`dock/`) |
 | Dock desk | Python HTTP + static UI (`web/`, :8788). Rust sidecar optional (`web/rust/`) |
 | Bearer note vault | One ignored rgb-lib datadir and mnemonic per disposable note; one-shot recovery journal |
 | Settlement | rgb-lib 0.3.0-beta.7, witness + out-of-band consignment, Mutinynet |
 | Voice | QVAC `tetherto-qvac-sdk==0.21.0` + `QWEN3_600M_INST_Q4` in `.qvac` |
 | BLE cookbook | `/media/kestl/andor/github/waveshares3` (patterns only) |
+| Watch hardware/app reference | `/media/kestl/xwing/Old_documents/Documents/PlatformIO/Projects/My-TTGO-Watch` at inspected commit `a7eb49ea` (read-only reference) |
 
 Firmware boots at `EMPTY / BLE READY` with no numeric amount and advertises frozen dock-core v1 plus
 implemented chunk-v1 GATT. The read-only state command reports

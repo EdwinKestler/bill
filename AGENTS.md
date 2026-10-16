@@ -1,4 +1,4 @@
-# AGENTS.md — RGB cash bill
+# AGENTS.md — fork2checkbook
 
 This folder is the bill project and its submission repository. It lives
 **inside** the hackathon workspace `/media/kestl/andor/github/rgbhackathon`,
@@ -49,6 +49,17 @@ Two ESP32 bills + two laptop docks. Voice on the dock prints a $5 note. Tap
 two bills (button + high RSSI). RGB witness transfer, consignment over BLE,
 Mutinynet settles. No QR, no phone-app UI for the tap.
 
+The planned wearable profile uses the local T-Watch 2020 V1 tree at
+`/media/kestl/xwing/Old_documents/Documents/PlatformIO/Projects/My-TTGO-Watch`
+as a **read-only hardware/application reference**. Implement submission code
+in this repository unless a human explicitly asks to change that tree. The
+watch replaces only an ESP32 bearer device; the Python dock, rgb-lib wallets,
+note vault, QVAC, network access, and confirmation gates remain on the laptop.
+The watch firmware may be purpose-built: preserve only a basic clock/home
+screen and the RGB Bill app. There is no requirement to retain the reference
+tree's other apps, Gadgetbridge services, Wi-Fi, web server, or OTA features.
+See `docs/TTGO-WATCH-APP-PLAN.md` before watch work.
+
 Read `docs/DESIGN.md` then `docs/PROTOCOL.md`.
 
 ## Tooling
@@ -69,6 +80,8 @@ Read `docs/DESIGN.md` then `docs/PROTOCOL.md`.
 - Confirmation gate before spends
 - Empty RGB transport endpoints on the tap; no Wi‑Fi consignment cheat
 - BLE patterns from `/media/kestl/andor/github/waveshares3`; new GATT; no locker code
+- T-Watch hardware/app patterns from the local `My-TTGO-Watch` tree; preserve
+  its attribution and GPL-2.0 obligations if code is copied
 - Do not commit, push, or flash unless a human asks
 
 These rules protect funds, devices, secrets, and repository history. They are

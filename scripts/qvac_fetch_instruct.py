@@ -136,7 +136,7 @@ async def _run(cache_dir: Path) -> dict:
             history=[
                 {
                     "role": "system",
-                    "content": "You are the RGB cash-bill printer. Reply with one line: PRINT <integer dollars>.",
+                    "content": "You are the fork2checkbook printer. Reply with one line: PRINT <integer dollars>.",
                 },
                 {"role": "user", "content": "bill for $5"},
             ],

@@ -37,7 +37,7 @@ def test_visual_redesign_preserves_human_first_protocol_language():
     html = _read("index.html")
     javascript = _read("app.js")
 
-    assert "Cash bill" in html
+    assert "fork2checkbook" in html
     assert "Physical bill" in html
     assert "Send USDT" in html
     assert "Receive USDT" in html

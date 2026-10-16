@@ -1,7 +1,10 @@
-# Public project website
+# Public fork2checkbook website
 
 Static project presentation for GitHub Pages. The local wallet desk remains in
 `web/`; this website explains the project and performs no wallet or BLE operations.
+
+The public-page and Python dock visual designs were submitted by
+[Anonymous0304](https://github.com/creatorofsomethingthatisgood).
 
 ## Preview
 
@@ -46,6 +49,8 @@ Workflow reference:
 - `docs/LIVE-EVIDENCE.md`: accepted bearer-note txids, hashes, balances, and
   explicit proof boundaries.
 - `docs/OFFLINE-BEARER-RUNBOOK.md`: exact operator and recovery sequence.
+- `docs/TTGO-WATCH-APP-PLAN.md`: planned wearable device profile and its
+  physical acceptance gates; it is not yet an accepted hardware claim.
 
 Keep the status copy aligned with those records. The browser-driven physical
 transfer and the offline bearer-note round trip are accepted. Local QVAC

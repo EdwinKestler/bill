@@ -9,7 +9,7 @@ from .config import RgbSettings
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="RGB bill adapter utilities")
+    parser = argparse.ArgumentParser(description="fork2checkbook RGB adapter utilities")
     parser.add_argument(
         "command",
         choices=["config-check"],

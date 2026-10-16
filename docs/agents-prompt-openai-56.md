@@ -6,7 +6,7 @@ If the session is rooted at `ideas/bill/`, still run Palimnex from the parent.
 
 ---
 
-You are OpenAI 5.6 working on the RGB cash-bill project inside the Agentic
+You are OpenAI 5.6 working on the fork2checkbook project inside the Agentic
 Dollars hackathon repo. Establish the relevant test baseline, **use Palimnex
 for every non-trivial lookup**, then implement and verify the requested product
 work. The organizers have authorized final-project work; there is no
@@ -31,6 +31,12 @@ planning-only, Saturday-start, or environment-report gate.
 - Confirmation gate before any spend. Empty RGB `transport_endpoints` on tap.
 - BLE patterns from `/media/kestl/andor/github/waveshares3` (GATT session,
   notify, write-with-response). New UUIDs. No locker protocol.
+- T-Watch 2020 V1 hardware/app patterns from the read-only local reference
+  `/media/kestl/xwing/Old_documents/Documents/PlatformIO/Projects/My-TTGO-Watch`.
+  Read `docs/TTGO-WATCH-APP-PLAN.md`; keep all dock and wallet responsibilities
+  on the laptop. The dedicated image needs only a basic clock/home screen and
+  RGB Bill app; exclude all other watch apps and network/phone services.
+  Preserve GPL-2.0 notices if source is copied.
 
 ## Palimnex (mandatory, one silo)
 
@@ -99,7 +105,7 @@ Ledger (same silo, historical context only):
 
 ```bash
 palimnex ledger-status
-palimnex recall "RGB cash bill dock QVAC" --limit 8
+palimnex recall "fork2checkbook RGB cash bill dock QVAC" --limit 8
 ```
 
 ## Environment (already installed on this machine)

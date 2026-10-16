@@ -1,1 +1,1 @@
-"""Laptop Bleak central for an RGB cash bill."""
+"""Laptop Bleak central for fork2checkbook's RgbBill devices."""

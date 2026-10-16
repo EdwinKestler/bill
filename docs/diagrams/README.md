@@ -1,4 +1,4 @@
-# RGB cash-bill diagrams
+# fork2checkbook diagrams
 
 These diagrams are generated from the current design, GATT contract, and live
 evidence. The direct invoice/consignment flow remains the fallback; the primary

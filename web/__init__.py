@@ -1,1 +1,1 @@
-"""Python web dock for one RGB cash bill."""
+"""Python web dock for one fork2checkbook device."""

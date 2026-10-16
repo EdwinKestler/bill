@@ -1,4 +1,4 @@
-# RGB cash bill — design
+# fork2checkbook — design
 
 Rendered architecture, sequence, state, protocol, hardware, and trust diagrams
 are indexed in [docs/diagrams/README.md](diagrams/README.md). Their editable
@@ -14,6 +14,7 @@ phone app, and no guessing whether the bill should be read or written.
 | --- | --- | --- |
 | Dock A / Dock B | Two laptops | Python web desk (`web/`, :8788), Bleak GATT (`dock/`), rgb-lib-python, QVAC voice, Mutinynet broadcast |
 | Bill A / Bill B | WEMOS LOLIN32 and LilyGO TTGO LoRa32 V1.3 / ESP32 | SSD1306 OLED, tap input, radio. **No** rgb-lib, **no** QVAC |
+| Planned watch bill | LilyGO T-Watch 2020 V1 / ESP32 | 240×240 touch app, haptic feedback, battery power, same opaque bearer/GATT contract. **No** rgb-lib, **no** QVAC |
 | Disposable note vault | Local trusted process for the selected demo | One fresh rgb-lib wallet N per note, claim hash, immutable plans, recovery journal |
 | GATT-dock | laptop ↔ its bill | On-demand connection. Inventory, commands, status, denomination, opaque chunks |
 | GATT-tap | bill ↔ bill | A press edge arms a bounded receiver window; high RSSI gates the peer. Carries invoice, consignment, or an opaque bearer capsule |
@@ -122,6 +123,37 @@ On-chain rgb-lib, not RLN. Lightning is a channel, not a note.
   profiles remain documented. See
   [TTGO-LORA32-V1.3-TEST.md](TTGO-LORA32-V1.3-TEST.md).
 
+### Planned T-Watch 2020 V1 profile
+
+The local reference tree
+`/media/kestl/xwing/Old_documents/Documents/PlatformIO/Projects/My-TTGO-Watch`
+is registered as a read-only implementation reference. Its inspected default
+target is the square LilyGO T-Watch 2020 V1: ESP32-D0WDQ6, 16 MB flash,
+240×240 ST7789 display, FT6336 touch controller, AXP202 power management,
+BMA423 motion sensor, PCF8563 RTC, vibration motor, LVGL 7.11, SPIFFS, and
+NimBLE. The existing watch framework discovers apps through
+`app_autocall_function` and supplies display, touch, power, and wake handling.
+
+The watch is a planned replacement physical bill, not a new dock. Its app must
+implement the existing dock service, tap service, chunk framing, inventory v3,
+bearer kind `0x04`, durable promotion, final-ACK deletion, one-shot receive,
+and RSSI policy without changing UUIDs or payloads. A deliberate screen action
+replaces the external GPIO12 press: **Receive note** arms one 15-second window,
+and a second action cancels it. The screen shows only artifact denomination and
+state; it never shows or stores a wallet balance.
+
+The watch framework already owns the process-wide NimBLE server and SPIFFS.
+The dedicated demo profile does not have to preserve that full framework. It
+keeps only a basic RTC-backed clock/home screen and the RGB Bill app, reusing
+the reference board, display, touch, PMU, sleep/wake, haptic, and filesystem
+layers. The reference Gadgetbridge/device-info/battery/step BLE services and
+all unrelated apps are excluded so RGB Bill can be the sole NimBLE owner.
+Wi-Fi, OTA, web-server, phone-companion, maps, notifications, and audio are
+excluded from the build. SPIFFS remains mounted once and RGB Bill files are
+namespaced; an app error must never format storage. Full implementation and
+acceptance gates are in
+[TTGO-WATCH-APP-PLAN.md](TTGO-WATCH-APP-PLAN.md).
+
 ## Delivery status and Sunday priorities
 
 1. Two rgb-lib wallets, witness + OOB consignment over USB serial, docks drive OLEDs/LEDs.
@@ -150,6 +182,10 @@ On-chain rgb-lib, not RLN. Lightning is a channel, not a note.
 10. Rehearse one non-technical three-minute live flow with understandable
    device/dock states and recovery messages. Add WDK only after the RGB + QVAC
    primary flow is stable; WDK is bonus, not a blocker.
+11. Port the accepted physical-bill role to the T-Watch 2020 V1 as an app,
+    keeping the laptop dock unchanged. **Planned; no watch build or physical
+    acceptance has been completed in this repository.** The accepted
+    WEMOS/TTGO pair remains the demo fallback.
 
 ## Web dock language
 
@@ -163,6 +199,18 @@ desk UI is already a browser page.
 ## BLE reference (do not copy protocol)
 
 `/media/kestl/andor/github/waveshares3`: ESP32-S3 reference only, PlatformIO, Bleak 3.0.2, frozen GATT JSON, write-with-response, notify, bonding, session FSM. Locker UUIDs, `0xA4`, barcodes, relays, and board pin maps stay there.
+
+## Watch reference (reuse hardware and app patterns)
+
+`/media/kestl/xwing/Old_documents/Documents/PlatformIO/Projects/My-TTGO-Watch`:
+local fork of `sharandac/My-TTGO-Watch`, inspected at commit `a7eb49ea`. Reuse
+its T-Watch 2020 V1 hardware initialization, LVGL app lifecycle, touch, PMU,
+sleep/wake, haptic, and SPIFFS conventions. Do not reuse its Gadgetbridge GATT
+contract as the RGB Bill protocol. The watch target is deliberately reduced to
+a basic clock/home screen plus the RGB Bill app; no other reference app or
+network service must survive. Do not edit the reference tree without separate
+human authorization. The reference is GPL-2.0; preserve notices and review
+distribution obligations before copying source.
 
 ## Judging
 

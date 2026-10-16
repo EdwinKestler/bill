@@ -54,6 +54,7 @@ ideas/bill/                 this project (git + PlatformIO root)
     WEB-RGB-TEST.md         browser-driven two-dock acceptance and API contract
     OFFLINE-RGB-DEMO-DESIGN.md  selected trusted-vault architecture and gaps
     OFFLINE-BEARER-RUNBOOK.md  exact accepted operator procedure and recovery
+    TTGO-WATCH-APP-PLAN.md  inspected watch reference and phased port gates
     LIVE-EVIDENCE.md        canonical public txids, hashes, balances, status
     THREAT-MODEL.md         prototype trust boundaries and failure policy
     diagrams/               editable Mermaid, rendered PNGs, render instructions
@@ -64,3 +65,9 @@ ideas/bill/                 this project (git + PlatformIO root)
 ```
 
 Lookup layer is the parent hackathon Palimnex (`/media/kestl/andor/github/rgbhackathon`). This folder is extra corpus, not a second project_id.
+
+External read-only implementation references:
+
+- `/media/kestl/andor/github/waveshares3`: BLE session patterns only.
+- `/media/kestl/xwing/Old_documents/Documents/PlatformIO/Projects/My-TTGO-Watch`:
+  T-Watch 2020 V1 hardware, LVGL app, touch, power, and sleep/wake patterns.
