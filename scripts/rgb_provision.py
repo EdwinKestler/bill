@@ -82,7 +82,7 @@ def provision(role: str) -> tuple[Path, Path, Path]:
                 f"RGB_DATA_DIR_B={ROOT / 'wallet-data' / 'bill-b'}",
                 f"RGB_MASTER_FINGERPRINT_{role}={keys.master_fingerprint}",
                 f"RGB_MNEMONIC_FILE_{role}={mnemonic_file}",
-                "ELECTRUM_URL=https://mutinynet.com/api",
+                "ELECTRUM_URL=https://esplora.signet.kaleidoswap.com",
                 "RGB_OOB_CONSIGNMENT=1",
                 "RGB_BOOTSTRAP_PROXY=rpcs://proxy.kaleidoswap.com/json-rpc",
                 f"RGB_OOB_INBOX_{role}={ROOT / '.rgb-oob' / f'bill-{slug}'}",

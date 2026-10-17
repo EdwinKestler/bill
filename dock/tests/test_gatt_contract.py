@@ -44,7 +44,7 @@ def test_all_frozen_dock_core_uuids_match():
 
     assert (
         contract["status"]
-        == "dock-core-v1+artifact-inventory-v3+chunk-v1-bearer-extraction+tap-v3-build-verified"
+        == "dock-core-v1+artifact-inventory-v3+chunk-v1-explicit-bearer-extraction+tap-v3-build-verified"
     )
     for suffix in suffixes:
         uuid = f"7c3e9a10-4b1e-4c8f-9d2a-00b111d0c00{suffix}"
@@ -58,6 +58,7 @@ def test_all_frozen_dock_core_uuids_match():
         "diag:chunk:echo",
         "artifact:prepare:<kind>:<denomination_cents>",
         "chunk:discard",
+        "chunk:receive",
     ]
     assert characteristics["chunk_in"]["implemented"] is True
     assert characteristics["chunk_out"]["implemented"] is True

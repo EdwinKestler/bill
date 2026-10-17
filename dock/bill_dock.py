@@ -34,6 +34,7 @@ ARTIFACT_META = "7c3e9a10-4b1e-4c8f-9d2a-00b111d0c008"
 DIAGNOSTIC_COMMAND = b"diag:display:empty"
 CHUNK_ECHO_COMMAND = b"diag:chunk:echo"
 CHUNK_DISCARD_COMMAND = b"chunk:discard"
+CHUNK_RECEIVE_COMMAND = b"chunk:receive"
 VALID_STATUSES = {"idle", "tap", "pending", "settled", "error"}
 
 
@@ -389,6 +390,16 @@ async def receive_chunk_file(
         )
         await transport.start()
         try:
+            # Explicitly request dock retrieval only after CHUNK_OUT
+            # notifications are enabled.  This avoids relying on the classic
+            # ESP32 BLE2902 object's cached CCCD value after a reboot while
+            # keeping bill-to-bill connections from exposing the artifact.
+            await asyncio.wait_for(
+                client.write_gatt_char(
+                    CMD, CHUNK_RECEIVE_COMMAND, response=True
+                ),
+                timeout=timeout,
+            )
             kind, session_id, payload = await transport.receive(
                 expected_kind=expected_kind,
                 expected_session_id=expected_session_id,

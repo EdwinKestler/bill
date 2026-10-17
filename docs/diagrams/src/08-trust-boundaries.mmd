@@ -7,8 +7,8 @@ flowchart LR
 
     human["Human exact confirmation"]:::trusted
 
-    subgraph custodyA["Dock A custody"]
-        walletA["Wallet A mnemonic datadir and lock"]:::trusted
+    subgraph custodyA["Issuing dock custody | example A"]
+        walletA["Issuing wallet mnemonic datadir and lock"]:::trusted
     end
 
     subgraph vaultBoundary["Trusted note-vault custody"]
@@ -26,8 +26,8 @@ flowchart LR
         copyRisk -.-> billB
     end
 
-    subgraph custodyB["Dock B custody"]
-        walletB["Wallet B mnemonic datadir and lock"]:::trusted
+    subgraph custodyB["Holder-chosen dock custody | example B"]
+        walletB["Previously unknown wallet mnemonic datadir and lock"]:::trusted
         verifier["Exact txid assignment and balance verifier"]:::trusted
         walletB --> verifier
     end

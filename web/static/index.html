@@ -49,6 +49,46 @@
       </p>
     </section>
 
+    <section class="card wallet-panel" aria-labelledby="wallet-heading">
+      <div class="wallet-heading-row">
+        <div>
+          <p class="label">Connected RGB wallet</p>
+          <h2 id="wallet-heading">Loading wallet identity…</h2>
+        </div>
+        <span id="wallet-network" class="wallet-network">Mutinynet</span>
+      </div>
+      <dl class="wallet-facts">
+        <div>
+          <dt>Role</dt>
+          <dd id="wallet-role">—</dd>
+        </div>
+        <div>
+          <dt>Master fingerprint</dt>
+          <dd id="wallet-fingerprint">—</dd>
+        </div>
+        <div>
+          <dt>RGB asset</dt>
+          <dd id="wallet-asset">—</dd>
+        </div>
+        <div>
+          <dt>Bearer purpose</dt>
+          <dd id="wallet-purpose">—</dd>
+        </div>
+        <div>
+          <dt>Bearer settlement</dt>
+          <dd id="wallet-target">—</dd>
+        </div>
+      </dl>
+      <p id="wallet-configuration" class="wallet-help">
+        Wallet selection is fixed when this dock starts.
+      </p>
+      <p class="wallet-help">
+        The browser never exposes a mnemonic or changes an open wallet. Stop
+        the dock, change its role-specific environment profile, and restart it
+        to select a different wallet.
+      </p>
+    </section>
+
     <section class="note" aria-live="polite" aria-labelledby="balance-label">
       <div class="note-grid" aria-hidden="true"></div>
       <div class="note-body">
@@ -65,19 +105,38 @@
           <p class="label">One next action</p>
           <h2 id="workflow-heading">Move $5.00 USDT</h2>
         </div>
-        <span class="workflow-step" aria-hidden="true">Tap flow</span>
+        <span id="workflow-step" class="workflow-step" aria-live="polite">Step 1 · online</span>
       </div>
       <p class="workflow-mode">
-        Browser mode: direct invoice + consignment transfer. The verified
-        offline bearer-note lifecycle currently runs through the guarded
-        operator CLI.
+        Bearer mode: a dock wallet funds a disposable note, its complete value
+        passes bill-to-bill with no network, and the eventual holder redeems it
+        once into a previously unknown dock wallet.
       </p>
       <p id="workflow-help" class="workflow-help">
         Connect verifies what is physically stored on the bill before any read or write.
       </p>
+      <form id="qvac-form" class="qvac-form">
+        <div>
+          <label for="qvac-text">Local QVAC assistant</label>
+          <input
+            id="qvac-text"
+            name="qvac-text"
+            autocomplete="off"
+            placeholder="Prepare a $5 note"
+          />
+        </div>
+        <button id="qvac-send" type="submit" class="primary">Ask QVAC</button>
+      </form>
+      <p id="qvac-status" class="qvac-status" aria-live="polite">
+        Local AI proposes a typed action. Deterministic policy and exact human
+        confirmation remain in control.
+      </p>
       <div class="workflow-actions">
-        <button id="send-usdt" type="button" class="action">Send USDT</button>
-        <button id="receive-usdt" type="button" class="action">Receive USDT</button>
+        <button id="load-note" type="button" class="action">1 · Load note</button>
+        <button id="pass-note" type="button" class="action">2 · Pass note</button>
+        <button id="redeem-note" type="button" class="action">3 · Redeem note</button>
+        <button id="recover-note" type="button" class="secondary">Recover</button>
+        <button id="refresh-note" type="button" class="secondary">Refresh settlement</button>
       </div>
       <p id="workflow-message" aria-live="polite"></p>
       <div id="recovery" class="recovery" hidden>
@@ -90,7 +149,15 @@
 
     <section class="card chat">
       <details>
-        <summary>Advanced text commands</summary>
+        <summary>Direct invoice flow and advanced commands</summary>
+        <p class="device-help">
+          Fallback only: this transfers an invoice and consignment directly and
+          is separate from the offline bearer-note demonstration.
+        </p>
+        <div class="workflow-actions">
+          <button id="send-usdt" type="button" class="secondary">Send USDT</button>
+          <button id="receive-usdt" type="button" class="secondary">Receive USDT</button>
+        </div>
         <ol id="log"></ol>
         <form id="form">
           <label for="text">Assistant</label>

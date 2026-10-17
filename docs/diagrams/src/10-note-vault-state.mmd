@@ -3,16 +3,19 @@ stateDiagram-v2
 
     [*] --> PREPARING
     PREPARING --> AWAITING_FUNDING: immutable funding plan
+    AWAITING_FUNDING --> BTC_TOPUP_PLANNED: note fee reserve below 2,000 sats
+    BTC_TOPUP_PLANNED --> BTC_TOPUP_BROADCAST_RECORDED: separate exact confirmation
+    BTC_TOPUP_BROADCAST_RECORDED --> AWAITING_FUNDING: confirmed reserve and fresh RGB plan
     AWAITING_FUNDING --> FUNDING_IMPORTED: exact confirmation and broadcast
     FUNDING_IMPORTED --> ACTIVE: exact receive settles
-    ACTIVE --> CLAIM_PLANNED: valid capsule and fresh Wallet B invoice
+    ACTIVE --> CLAIM_PLANNED: valid capsule and fresh chosen-wallet invoice
     CLAIM_PLANNED --> CLAIMING: exact redemption confirmation
     CLAIMING --> BROADCAST_RECORDED: txid and consignment persisted
-    BROADCAST_RECORDED --> REDEMPTION_IMPORTED: Wallet B imports retained proof
+    BROADCAST_RECORDED --> REDEMPTION_IMPORTED: chosen wallet imports retained proof
     REDEMPTION_IMPORTED --> REDEEMED: exact transfer and balance settle
 
     CLAIMING --> AMBIGUOUS: unknown send outcome
-    BROADCAST_RECORDED --> IMPORT_RECOVERY_REQUIRED: Wallet B import failure
+    BROADCAST_RECORDED --> IMPORT_RECOVERY_REQUIRED: chosen-wallet import failure
     IMPORT_RECOVERY_REQUIRED --> REDEMPTION_IMPORTED: import retained proof only
 
     CLAIMING --> PRE_BROADCAST_REJECTED: proven allocation-slot rejection

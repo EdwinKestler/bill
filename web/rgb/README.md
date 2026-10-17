@@ -66,8 +66,12 @@ operations:
    `scripts.rgb_tap`; follow [RGB-TAP-LIVE.md](../../docs/RGB-TAP-LIVE.md) and
    verify both wallets reach the expected confirmation/settled states.
 
-The live bridge intentionally has no wallet-generation command, no faucet
-automation, no proxy transport endpoint, and no implicit broadcast retry.
+The direct invoice bridge intentionally has no wallet-generation command, no
+proxy transport endpoint, and no implicit broadcast retry. The separate
+bearer-note orchestrator may prepare a confirmation-gated `send_btc` from the
+issuing dock wallet to its fresh disposable note. This replaces only the
+interactive faucet step; it never adds an RGB transport endpoint or retries an
+ambiguous Bitcoin or RGB broadcast.
 
 The operator-only provisioning helper is deliberately separate from the web
 server and runs once per process:

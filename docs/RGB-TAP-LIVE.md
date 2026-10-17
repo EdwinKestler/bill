@@ -23,7 +23,7 @@ process and never open one wallet datadir from two processes.
 Both ignored role files must set:
 
 ```dotenv
-ELECTRUM_URL=https://mutinynet.com/api
+ELECTRUM_URL=https://esplora.signet.kaleidoswap.com
 RGB_OOB_CONSIGNMENT=1
 RGB_MAX_CONSIGNMENT_BYTES=655360
 ```
@@ -43,9 +43,10 @@ set -a; source .env.b; set +a
 ```
 
 Record the exact USDT `asset_id`, its `precision`, Bill A's spendable asset
-balance, and both BTC balances. If the indexer returns HTTP 429, stop and retry
-later; do not replace Mutinynet with generic Signet and do not bypass the
-wallet consistency check.
+balance, and both BTC balances. The dedicated KaleidoSwap Esplora endpoint is
+the default because the public `https://mutinynet.com/api` endpoint can return
+HTTP 429 under shared traffic. Do not replace Mutinynet with generic Signet and
+do not bypass the wallet consistency check.
 
 `--amount` is always an integer in asset base units. For 20 USDT, use
 `20 * 10^precision`. Omitting `--amount` intentionally plans Bill A's entire

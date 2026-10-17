@@ -206,7 +206,9 @@ void DockGatt::poll() {
     return;
   }
 
-  if (!connected_ || !dockNotificationsEnabled || !outboundActive_) {
+  const bool dockReceiveReady =
+      dockReceiveRequested_ || dockNotificationsEnabled;
+  if (!connected_ || !dockReceiveReady || !outboundActive_) {
     xSemaphoreGive(chunkMutex_);
     return;
   }
@@ -275,6 +277,7 @@ void DockGatt::handleConnect() {
       xSemaphoreTake(chunkMutex_, portMAX_DELAY) == pdTRUE) {
     connected_ = true;
     advertisingRestartPending_ = false;
+    dockReceiveRequested_ = false;
     if (chunkOutCccd_ != nullptr) {
       chunkOutCccd_->setNotifications(false);
     }
@@ -288,6 +291,7 @@ void DockGatt::handleDisconnect(BLEServer* server) {
   if (chunkMutex_ != nullptr &&
       xSemaphoreTake(chunkMutex_, portMAX_DELAY) == pdTRUE) {
     connected_ = false;
+    dockReceiveRequested_ = false;
     if (chunkOutCccd_ != nullptr) {
       chunkOutCccd_->setNotifications(false);
     }
@@ -348,6 +352,19 @@ void DockGatt::handleCommand(const std::string& command) {
     Serial.println(armed
                        ? "bill: next chunk transfer will be echoed"
                        : "bill: chunk echo not armed; staged transfer is busy");
+    return;
+  }
+
+  if (command == "chunk:receive") {
+    bool armed = false;
+    if (chunkMutex_ != nullptr &&
+        xSemaphoreTake(chunkMutex_, portMAX_DELAY) == pdTRUE) {
+      dockReceiveRequested_ = connected_ && !outboundActive_;
+      armed = dockReceiveRequested_;
+      xSemaphoreGive(chunkMutex_);
+    }
+    Serial.println(armed ? "bill: dock outbound requested"
+                         : "bill: dock outbound request rejected");
     return;
   }
 
@@ -557,8 +574,9 @@ bool DockGatt::queueOutboundTransfer(uint8_t kind, uint32_t sessionId,
   // the dock CHUNK_OUT CCCD, so do not consume/queue the tap artifact merely
   // because another bill is connected.
   const bool dockSubscribed =
-      connected_ && chunkOutCccd_ != nullptr &&
-      chunkOutCccd_->getNotifications();
+      connected_ &&
+      (dockReceiveRequested_ ||
+       (chunkOutCccd_ != nullptr && chunkOutCccd_->getNotifications()));
   const bool queued =
       dockSubscribed &&
       queueOutboundLocked(static_cast<rgbbill::chunk::Kind>(kind), sessionId,
@@ -625,6 +643,7 @@ void DockGatt::finishOutboundLocked(bool success) {
   outboundRemoveAfterSend_ = false;
   outboundEncodedLength_ = 0;
   outboundPath_[0] = '\0';
+  dockReceiveRequested_ = false;
 }
 
 void DockGatt::resetInboundLocked(bool removeReady) {

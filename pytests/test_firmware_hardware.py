@@ -140,12 +140,22 @@ def test_bearer_note_can_be_extracted_by_dock_after_final_ack():
     tap_source = (
         ROOT / "lib" / "TapGatt" / "src" / "TapGatt.cpp"
     ).read_text(encoding="utf-8")
+    dock_header = (
+        ROOT / "lib" / "DockGatt" / "src" / "DockGatt.h"
+    ).read_text(encoding="utf-8")
+    dock_source = (
+        ROOT / "lib" / "DockGatt" / "src" / "DockGatt.cpp"
+    ).read_text(encoding="utf-8")
+    dock_client = (ROOT / "dock" / "bill_dock.py").read_text(encoding="utf-8")
 
     assert "peekOutboundTransfer(InboundTransfer& transfer)" in tap_header
     assert "bool TapGatt::peekOutboundTransfer" in tap_source
     assert "DockGatt deletes the file only after the laptop ACKs" in tap_source
     assert "dockGatt.queueOutboundTransfer(bearer.kind" in main
     assert "dockGatt.queueOutboundTransfer(bearer.kind" in ttgo
+    assert "dockReceiveRequested_" in dock_header
+    assert 'command == "chunk:receive"' in dock_source
+    assert "CHUNK_RECEIVE_COMMAND = b\"chunk:receive\"" in dock_client
 
 
 def test_ttgo_external_ili9341_profile_remains_legacy_rollback():

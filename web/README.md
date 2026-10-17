@@ -17,11 +17,11 @@ python -m web.server
 
 By default it binds the role-specific loopback host and port from the
 environment. On the current bench, A uses port `8788` and B uses port `8789`.
-Role B
-creates/stages the real witness invoice and imports the received consignment.
-Role A retrieves the tapped invoice and presents an immutable plan. Broadcast
-is unreachable until the operator types the displayed exact
-`CONFIRM <plan_id>` phrase.
+In the primary bearer flow, A/B select isolated wallet and device-registration
+profiles; either profile can issue a note it funded or redeem a received note.
+The older direct-mode fallback remains role-specific: B creates the invoice and
+A sends to it. Broadcast is unreachable until the operator types the displayed
+exact `CONFIRM <plan_id>` phrase.
 
 For a trusted LAN demo that must remain reachable through both localhost and
 the Wi-Fi address, set `DOCK_HTTP_HOST=0.0.0.0` in both role environments.
@@ -31,11 +31,49 @@ The wildcard listens on every host interface, including VPN interfaces. Do not
 forward these ports: the prototype has no web-user authentication, so any
 client that can reach them can operate the dock UI.
 
-This web application implements the accepted direct invoice/consignment flow.
-The disposable offline bearer-note path is currently operated through
-`scripts/note_wallet_live.py` and is documented in
-[`OFFLINE-BEARER-RUNBOOK.md`](../docs/OFFLINE-BEARER-RUNBOOK.md). Do not imply
-that the browser can yet fund, load, or redeem a bearer note.
+## Wallet identity and selection
+
+Every dock page shows the non-secret identity of the rgb-lib wallet currently
+owned by that process: its configurable label, A/B role, Mutinynet network,
+master fingerprint, RGB asset, and bearer purpose. Issuance funds a fresh
+disposable note wallet, not the physical ESP32 or a known recipient. The final
+wallet is chosen only when the eventual holder redeems at a compatible dock.
+
+Configure the human-readable names with `RGB_WALLET_LABEL_A` and
+`RGB_WALLET_LABEL_B`. The actual wallet selection remains the existing
+role-scoped `RGB_DATA_DIR_*`, `RGB_MASTER_FINGERPRINT_*`, and
+`RGB_MNEMONIC_FILE_*` configuration. Stop the dock before changing those
+settings, then restart it. The browser deliberately cannot switch an open
+wallet: rgb-lib holds one process lock per datadir, and the trusted-LAN UI has
+no user authentication. Mnemonics, mnemonic paths, and full data-directory
+paths are never returned to the browser.
+
+This web application now drives the accepted disposable bearer-note flow. The
+primary local-QVAC box maps **“Prepare a $5 note”** to `LOAD_NOTE(500)` and
+hands that typed output to deterministic policy, which creates a fresh
+no-broadcast funding plan. QVAC cannot confirm, broadcast, create confirmation
+text, or write hardware. After exact human confirmation and one Mutinynet
+confirmation, **Load note** refreshes exact settlement and loads the funded
+capsule onto the empty registered bill. **Pass note** explains the dock-free whole-value BLE handoff.
+Any eventual holder's dock exposes **Redeem note**, which extracts the capsule,
+verifies its exact SHA-256, creates that dock wallet's fresh
+transport-free invoice, and stops at the immutable confirmation dialog.
+**Recover** can re-import only a recorded consignment or safely supersede an
+expired, unconsumed plan; it never repeats an RGB send. **Refresh settlement**
+performs the exact txid/assignment/balance closure. A fresh disposable wallet
+still needs Mutinynet fee sats, but the browser now prepares an immutable
+Bitcoin top-up from the issuing dock wallet instead of directing the human to
+a faucet. The top-up and RGB funding remain separate broadcasts with separate
+exact confirmations; after the top-up confirms, **“Check my note”** creates a
+fresh RGB plan. Exceptional capacity recovery remains a guarded operator
+procedure in [`OFFLINE-BEARER-RUNBOOK.md`](../docs/OFFLINE-BEARER-RUNBOOK.md).
+
+The web bearer adapter borrows the already-open role wallet under
+`RgbWebService`'s lock. Its `close()` is deliberately a no-op, so the web dock
+remains the only owner of that wallet datadir. Disposable note wallet N keeps
+its independent process lock. Received capsule files are private (`0600`),
+content-addressed under ignored `.note-vault/incoming/`, and retained across a
+plan/indexer failure.
 
 Post-broadcast staging failure retains the exact consignment and exposes a
 stage-only retry that cannot send again. Import failure similarly retains and
@@ -59,10 +97,12 @@ Registration is rejected while a transfer, confirmation, or recovery boundary
 is active. There is currently no web-user account layer: “one per user” means
 one physical bill per role-specific dock process.
 
-The primary UI is deliberately state-driven: role A exposes **Send USDT** and
-role B exposes **Receive USDT**. Each action inventories the registered bill
-before choosing a BLE direction. Text commands remain under an Advanced
-disclosure for diagnostics and recovery, not as the normal human procedure.
+The primary UI is deliberately state-driven around **Load note**, **Pass
+note**, **Redeem note**, **Recover**, and **Refresh settlement**. Bearer actions
+are profile-neutral; each action
+inventories the registered bill before choosing a BLE direction. The older
+role-A **Send USDT** / role-B **Receive USDT** direct mode and text commands
+remain under an Advanced disclosure as a fallback, not the main demo.
 Inventory v2 also exposes `recovery-blocked`; both primary actions fail closed
 in that state so a retained DockGatt artifact can never be mistaken for an
 empty bill and produce a second invoice.
@@ -79,5 +119,6 @@ and manual Send/Receive actions—there is no background BLE transfer trigger.
 | `device_registry.py` | Strict BLE discovery, read-only verification, one saved bill |
 | `static/` | Desk UI (denomination, status, confirm) |
 | `rgb_web.py` | Long-lived role wallet + exact-artifact recovery boundaries |
+| `bearer_web.py` | Web-to-note-vault bridge; private extraction and borrowed wallet ownership |
 | `rgb/` | Isolated rgb-lib-python adapter and safe config check |
 | `rust/` | Optional native rgb-lib crate; not required to demo |

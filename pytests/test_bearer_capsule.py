@@ -43,6 +43,19 @@ def test_capsule_round_trip_is_canonical_and_bounded():
     assert len(encoded) < 1_024
 
 
+def test_capsule_does_not_name_issuer_destination_or_person():
+    encoded = encode_bearer_capsule(_capsule())
+
+    for forbidden in (
+        b"master_fingerprint",
+        b"issuer_wallet",
+        b"destination_wallet",
+        b"recipient_wallet",
+        b"person",
+    ):
+        assert forbidden not in encoded
+
+
 def test_capsule_rejects_truncation_unknown_version_and_bit_flip():
     encoded = encode_bearer_capsule(_capsule())
     with pytest.raises(BearerCapsuleError, match="truncated"):

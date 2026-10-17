@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "contract_revision": "2026-10-15",
-  "status": "dock-core-v1+artifact-inventory-v3+chunk-v1-bearer-extraction+tap-v3-build-verified",
+  "contract_revision": "2026-10-17",
+  "status": "dock-core-v1+artifact-inventory-v3+chunk-v1-explicit-bearer-extraction+tap-v3-build-verified",
   "device_name": "RgbBill",
   "services": {
     "dock": {
@@ -33,7 +33,8 @@
             "diag:display:empty",
             "diag:chunk:echo",
             "artifact:prepare:<kind>:<denomination_cents>",
-            "chunk:discard"
+            "chunk:discard",
+            "chunk:receive"
           ]
         },
         "chunk_in": {

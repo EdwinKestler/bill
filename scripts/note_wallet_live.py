@@ -10,6 +10,7 @@ from pathlib import Path
 
 from web.rgb.config import RgbSettings
 from web.rgb.note_live import (
+    abandon_live_unbroadcast_note,
     execute_live_redemption_plan,
     execute_live_redemption_capacity_plan,
     execute_live_funding_plan,
@@ -118,6 +119,20 @@ def _resume(args: argparse.Namespace) -> dict[str, object]:
         "warning": "No transaction was broadcast; review the exact plan separately.",
         "secret_handling": "existing private note wallet reused; no new keys generated",
     }
+
+
+def _abandon(args: argparse.Namespace) -> dict[str, object]:
+    settings = RgbSettings.from_env(require_credentials=True)
+    expected = f"ABANDON {args.note_id}"
+    entered = input(f"Type exactly '{expected}' to archive this unbroadcast note: ")
+    if entered != expected:
+        raise LiveNoteError("exact abandon phrase is required")
+    return abandon_live_unbroadcast_note(
+        settings,
+        vault_root=args.vault_root,
+        note_id=args.note_id,
+        reason=args.reason,
+    )
 
 
 def _renew(args: argparse.Namespace) -> dict[str, object]:
@@ -374,6 +389,13 @@ def main() -> None:
     resume.add_argument("--vault-root", type=Path, default=DEFAULT_VAULT_ROOT)
     resume.add_argument("--invoice-lifetime-seconds", type=int, default=86_400)
     resume.add_argument("--plan-lifetime-seconds", type=int, default=900)
+    abandon = subparsers.add_parser(
+        "abandon-unbroadcast-note",
+        help="archive a failed note shell only when no funding plan or send exists",
+    )
+    abandon.add_argument("--note-id", required=True)
+    abandon.add_argument("--vault-root", type=Path, default=DEFAULT_VAULT_ROOT)
+    abandon.add_argument("--reason", default="operator-test-reset")
     renew = subparsers.add_parser(
         "renew-funding-plan",
         help="archive an unconsumed plan and bind a fresh plan to current balances",
@@ -403,7 +425,7 @@ def main() -> None:
     capsule.add_argument("--vault-key-id", default="local-demo-vault-v1")
     redeem = subparsers.add_parser(
         "prepare-redemption-plan",
-        help="verify a received bearer capsule and persist a no-broadcast Wallet B plan",
+        help="verify a received bearer capsule and persist a no-broadcast destination-wallet plan",
     )
     redeem.add_argument("--capsule", type=Path, required=True)
     redeem.add_argument("--expected-sha256", required=True)
@@ -421,7 +443,7 @@ def main() -> None:
     )
     recover_redeem = subparsers.add_parser(
         "recover-redemption",
-        help="resume only a recorded Wallet B import; never resend",
+        help="resume only a recorded destination-wallet import; never resend",
     )
     recover_redeem.add_argument("--note-id", required=True)
     recover_redeem.add_argument(
@@ -429,7 +451,7 @@ def main() -> None:
     )
     refresh_redeem = subparsers.add_parser(
         "refresh-redemption",
-        help="refresh Wallet B and close only an exactly settled redemption",
+        help="refresh the destination wallet and close only an exactly settled redemption",
     )
     refresh_redeem.add_argument("--note-id", required=True)
     refresh_redeem.add_argument(
@@ -495,6 +517,8 @@ def main() -> None:
             result = _prepare(args)
         elif args.command == "resume-funding-plan":
             result = _resume(args)
+        elif args.command == "abandon-unbroadcast-note":
+            result = _abandon(args)
         elif args.command == "renew-funding-plan":
             result = _renew(args)
         elif args.command == "confirm-funding":

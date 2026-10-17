@@ -6,7 +6,7 @@ import os
 import threading
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Mapping
+from typing import Callable, Mapping, TypeVar
 
 from dock.chunk_protocol import MAX_TRANSFER_BYTES
 from web.rgb.adapter import ConsignmentArtifact
@@ -63,6 +63,22 @@ class ImportOutcome:
     received: ReceivedArtifact
     updated_transfers: Mapping[int, str] | None
     error: str | None = None
+
+
+T = TypeVar("T")
+
+
+class _BorrowedBackend:
+    """Delegate to the web-owned backend without releasing its process lock."""
+
+    def __init__(self, backend: object) -> None:
+        self._backend = backend
+
+    def close(self) -> None:
+        """The owning :class:`RgbWebService` closes the backend at shutdown."""
+
+    def __getattr__(self, name: str) -> object:
+        return getattr(self._backend, name)
 
 
 class RgbWebService:
@@ -157,6 +173,32 @@ class RgbWebService:
         with self._lock:
             balance = self.flow.adapter.spendable_balance(self.asset_id)
         return self.cents_from_base_units(balance)
+
+    @property
+    def settings(self) -> RgbSettings:
+        """Return the immutable settings for this service's single wallet."""
+
+        return self.flow.adapter.settings
+
+    def with_borrowed_backend(
+        self,
+        operation: Callable[[RgbSettings, Callable[[RgbSettings], object]], T],
+    ) -> T:
+        """Run a note-vault operation against the already-open web wallet.
+
+        The supplied opener always returns a non-closing view of this service's
+        backend. Holding the service lock for the whole callback prevents the
+        direct RGB flow and the bearer flow from touching the same native
+        wallet concurrently.
+        """
+
+        with self._lock:
+            borrowed = _BorrowedBackend(self.flow.adapter._backend)
+
+            def opener(_settings: RgbSettings) -> object:
+                return borrowed
+
+            return operation(self.settings, opener)
 
     def stage_invoice(
         self, cents: int, *, expires_in_seconds: int = 3600

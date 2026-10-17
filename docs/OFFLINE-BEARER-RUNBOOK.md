@@ -1,13 +1,29 @@
 # Offline bearer-note live demo runbook
 
-Accepted path: Wallet A → disposable note N → offline WEMOS/TTGO relay →
-Wallet B. Network: Mutinynet only. The direct invoice-first browser flow remains
-the fallback in [`WEB-RGB-TEST.md`](WEB-RGB-TEST.md).
+Accepted reference path: Wallet A → disposable note N → offline WEMOS/TTGO
+relay → Wallet B. That A-to-B run is evidence, not an authorization rule. A/B
+are isolated profiles: a funded Wallet B may issue a later note and Wallet A
+may become its previously unknown redeemer. Network: Mutinynet only. The direct
+invoice-first browser flow remains the fallback in
+[`WEB-RGB-TEST.md`](WEB-RGB-TEST.md).
 
 This runbook contains spend-capable commands. Every `confirm-*` operation must
 stop at its own freshly printed immutable plan and receive a separate exact
 human `CONFIRM <plan-id>` authorization. Never reuse a phrase copied from this
 repository or an earlier run.
+
+The dock browser now covers normal note preparation through the resident local
+QVAC model plus **Load note**, **Pass note**, **Redeem note**, **Recover**, and
+**Refresh settlement**. Ask **“Prepare a $5 note”**; QVAC proposes only
+`LOAD_NOTE(500)`, deterministic code creates the no-broadcast plan, and the
+human still types the exact confirmation. If the fresh wallet lacks fee sats,
+the browser prepares a separate immutable Bitcoin top-up from the issuing dock
+wallet. Review and confirm it, wait for one Mutinynet confirmation, then ask
+**“Check my note”** to obtain a fresh RGB funding plan. No faucet address is
+shown in the normal browser flow, and one confirmation never authorizes both
+broadcasts. The commands below remain the auditable operator equivalent and
+are still required for the separately confirmed capacity fallback. Do not run
+the CLI and web server against the same Wallet A/B datadir at the same time.
 
 ## 0. Safety and process isolation
 
@@ -24,9 +40,29 @@ ps -eo pid,args | rg 'web\.server|rgb_wallet|rgb_tap|note_wallet_live'
 .venv/bin/python -m pytest -q
 ```
 
+### Archive a failed pre-broadcast test note
+
+If preparation failed before any funding plan or send existed, the preserved
+note shell may be explicitly archived so it cannot block the next demo. This
+operation keeps its wallet directory and manifest, records `ABANDONED`, and
+cannot run for an active, planned, funded, or ambiguous-send note. Stop the web
+dock using that issuer profile first, then type the exact phrase requested by
+the command:
+
+```bash
+.venv/bin/python -m scripts.note_wallet_live abandon-unbroadcast-note \
+  --note-id NOTE_ID \
+  --reason operator-test-reset
+```
+
+This is test-state cleanup, not transaction recovery. Never use it to dismiss
+an unknown send outcome.
+
 ## 1. Prepare and fund a disposable note
 
-Load Wallet A's isolated environment and create a fresh no-broadcast plan:
+Choose the issuing wallet only by who owns the value now. The final settlement
+wallet is deliberately unknown. Load that wallet's isolated environment (A is
+the reference example) and create a fresh no-broadcast plan:
 
 ```bash
 set -a; source .env.a; set +a
@@ -34,7 +70,13 @@ set -a; source .env.a; set +a
   --asset-id "$RGB_ASSET_ID"
 ```
 
-Review the note ID, exact 5,000,000-unit amount, Wallet A balance, recipient,
+The CLI retains its low-level preflight output for diagnosis. The normal web
+dock instead creates `fund-note-bitcoin-reserve`, binding the note address,
+missing sat amount, source balances, fee rate, expiry, and a fresh plan ID. Its
+exact confirmation broadcasts one `send_btc`; after confirmation the dock
+supersedes the stale RGB plan and presents a new one.
+
+Review the note ID, exact 5,000,000-unit amount, issuer balance, recipient,
 fee, expiry, transport endpoints, and Bitcoin fee inventory. In a separate
 operation, and only after explicit approval:
 
@@ -43,6 +85,14 @@ operation, and only after explicit approval:
   --note-id NOTE_ID \
   --plan-id PLAN_ID
 ```
+
+In the web/QVAC flow, an `InsufficientAllocationSlots` rejection is not a
+reason to repeat that confirmation. Ask QVAC **“check my note”**. The dock must
+first prove that the RGB send remained pre-broadcast, then show a separate
+immutable confirmation for one 8,000-sat source-wallet colorable UTXO. After
+that Bitcoin transaction confirms, ask **“check my note”** again. The dock
+archives the rejected plan and presents a fresh RGB funding plan with a new
+confirmation phrase. Never reuse the consumed RGB confirmation.
 
 Wait for confirmation and activate only after exact settlement proof:
 
@@ -103,10 +153,14 @@ sha256sum .note-vault/incoming/received.rgbn
 ```
 
 The full digest must equal the source digest before the capsule is parsed or a
-Wallet B invoice is created. An interrupted extraction does not consume the
+destination-wallet invoice is created. An interrupted extraction does not consume the
 bill copy; retry extraction, not funding.
 
-## 5. Prepare the Wallet B redemption plan
+## 5. Choose the settlement wallet and prepare its redemption plan
+
+Only the current holder chooses this wallet. It need not be known to the issuer
+or any intermediary. Stop any web process using its datadir, then source that
+wallet's profile (B is the reference example):
 
 ```bash
 set -a; source .env.b; set +a
@@ -115,7 +169,7 @@ set -a; source .env.b; set +a
   --expected-sha256 EXPECTED_CAPSULE_SHA256
 ```
 
-This creates Wallet B's fresh transport-free invoice only after capsule and
+This creates the selected wallet's fresh transport-free invoice only after capsule and
 vault validation. Review note ID, recipient, invoice hash, amount, fee, expiry,
 and empty endpoints.
 
@@ -148,7 +202,7 @@ Only after reviewing the fresh plan and obtaining explicit authorization:
 ```
 
 This consumes the confirmation before the send, records the broadcast and
-exact consignment, and imports that retained consignment into Wallet B. If
+exact consignment, and imports that retained consignment into the selected wallet. If
 import alone failed after a recorded broadcast, use `recover-redemption`; do
 not confirm or send again.
 
@@ -165,7 +219,7 @@ Wait for one Mutinynet confirmation and run the read-only settlement gate:
 ```
 
 Acceptance requires exactly one matching txid, `receive_witness`, one
-5,000,000-unit assignment, and Wallet B's settled/future/spendable balance at
+5,000,000-unit assignment, and the selected wallet's settled/future/spendable balance at
 the recorded pre-balance plus 5,000,000. Terminal state must be `REDEEMED`
 with claim `SPENT`. Repeating this command returns the recorded evidence
 without reopening the wallet.
@@ -176,6 +230,11 @@ without reopening the wallet.
 - Show source/extracted capsule hashes and redemption consignment hash.
 - State plainly: the offline segment relayed a bearer capability; settlement
   required the vault and Mutinynet later.
+- State plainly: the tap moved the whole denomination, intermediaries needed no
+  dock or account, and the issuer did not select the final wallet.
+- Do not claim strict anonymity or fungibility: the trusted vault can correlate
+  issuance/redemption, BLE identities are observable nearby, and copied
+  capsules race under first-redemption-wins.
 - State the trusted-vault, copy, ESP32 extraction, QVAC, and WDK limitations.
 - Never run another live spend merely to improve a screenshot.
 

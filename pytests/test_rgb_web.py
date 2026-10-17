@@ -14,6 +14,7 @@ class FakeAdapter:
         self.settings = SimpleNamespace(role=role)
         self.confirmed = []
         self.closed = False
+        self._backend = SimpleNamespace(marker="owned", closed=False)
 
     def spendable_balance(self, _asset_id):
         return 60_000_000
@@ -144,3 +145,18 @@ def test_web_amount_conversion_uses_configured_asset_precision(tmp_path):
     assert service.cents_from_base_units(60_000_000) == 6000
     assert service.spendable_cents() == 6000
     assert service.refresh_settlement() == (6000, {7: "settled"})
+
+
+def test_note_operation_borrows_web_backend_without_closing_owner(tmp_path):
+    flow = RecoveryFlow(tmp_path, BillRole.B)
+    service = RgbWebService(flow, asset_id="rgb:usdt", asset_precision=6)
+
+    def operation(settings, opener):
+        borrowed = opener(settings)
+        assert borrowed.marker == "owned"
+        borrowed.close()
+        return "ok"
+
+    assert service.with_borrowed_backend(operation) == "ok"
+    assert flow.adapter._backend.closed is False
+    assert flow.adapter.closed is False

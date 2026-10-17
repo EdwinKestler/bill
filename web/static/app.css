@@ -181,6 +181,60 @@ h2 {
   border-top: 3px solid var(--note);
 }
 
+.wallet-panel {
+  border-top: 3px solid var(--gold);
+}
+
+.wallet-heading-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: start;
+}
+
+.wallet-heading-row h2 {
+  margin: 0.15rem 0 0;
+}
+
+.wallet-network {
+  border: 1px solid var(--gold-line);
+  border-radius: 999px;
+  padding: 0.28rem 0.6rem;
+  font: 0.68rem/1.2 var(--mono);
+  white-space: nowrap;
+  color: var(--gold-ink);
+  background: var(--gold-bg);
+}
+
+.wallet-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem 1rem;
+  margin: 1rem 0;
+}
+
+.wallet-facts div {
+  min-width: 0;
+}
+
+.wallet-facts dt {
+  font: 0.68rem/1.4 var(--mono);
+  color: var(--ink-soft);
+  text-transform: uppercase;
+}
+
+.wallet-facts dd {
+  margin: 0.15rem 0 0;
+  font-size: 0.86rem;
+  overflow-wrap: anywhere;
+}
+
+.wallet-help {
+  margin: 0.55rem 0 0;
+  color: var(--ink-soft);
+  font-size: 0.78rem;
+}
+
 .device-heading-row {
   display: flex;
   justify-content: space-between;
@@ -522,6 +576,33 @@ button:disabled {
   line-height: 1.45;
 }
 
+.qvac-form {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.75rem;
+  align-items: end;
+  margin-top: 1rem;
+  padding: 0.9rem;
+  border: 1px solid var(--note-line);
+  border-radius: var(--radius-sm);
+  background: var(--note-tint);
+}
+
+.qvac-form > div {
+  min-width: 0;
+}
+
+.qvac-form button {
+  min-height: 2.65rem;
+  white-space: nowrap;
+}
+
+.qvac-status {
+  margin: 0.5rem 0 0;
+  font: 0.72rem/1.45 var(--mono);
+  color: var(--note);
+}
+
 .workflow-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -769,6 +850,12 @@ menu {
   .device-heading-row {
     align-items: center;
   }
+  .wallet-heading-row {
+    align-items: center;
+  }
+  .wallet-facts {
+    grid-template-columns: 1fr;
+  }
   .device-actions button {
     flex: 1 1 auto;
   }
@@ -777,6 +864,9 @@ menu {
   }
   .chat form label {
     flex-basis: 100%;
+  }
+  .qvac-form {
+    grid-template-columns: 1fr;
   }
   .note-seal {
     width: 2.6rem;

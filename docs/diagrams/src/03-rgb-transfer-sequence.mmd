@@ -1,11 +1,12 @@
 sequenceDiagram
     autonumber
-    actor personA as Person A
-    participant walletA as Wallet A / Dock A
+    actor personA as Issuer
+    participant walletA as Issuing wallet / dock
     participant vault as Note vault / wallet N
     participant billA as Bill A
     participant billB as Bill B
-    participant walletB as Wallet B / Dock B
+    actor holder as Eventual holder
+    participant walletB as Holder-chosen wallet / dock
     participant chain as Mutinynet
 
     rect rgb(220, 252, 231)
@@ -28,9 +29,9 @@ sequenceDiagram
     rect rgb(254, 249, 195)
         billB-->>walletB: Extract exact capsule through dock CHUNK_OUT
         walletB->>walletB: Persist privately and verify source SHA-256
-        walletB->>vault: Fresh Wallet B invoice and claim capability
-        vault-->>personA: Show immutable redemption plan
-        personA->>vault: CONFIRM fresh redemption plan id
+        walletB->>vault: Fresh chosen-wallet invoice and claim capability
+        vault-->>holder: Show immutable redemption plan
+        holder->>vault: CONFIRM fresh redemption plan id
         vault->>chain: RGB redemption transaction N to B
         vault-->>walletB: Exact retained OOB consignment
     end
@@ -40,8 +41,8 @@ sequenceDiagram
         walletB->>chain: Refresh one matching receive_witness
         chain-->>walletB: Confirmed anchor
         walletB->>walletB: Verify 5,000,000 assignment and balance delta
-        walletB-->>personA: REDEEMED | claim SPENT | no resend
+        walletB-->>holder: REDEEMED | claim SPENT | no resend
     end
 
-    Note over walletA,walletB: Exactly two RGB transitions<br/>The offline BLE hop moves a bearer capability
+    Note over walletA,walletB: Exactly two RGB transitions<br/>Issuer does not choose the final wallet<br/>Every offline tap moves the whole bearer capability
     Note over vault,walletB: Trusted-vault Mutinynet prototype<br/>A copied capsule is first-redemption-wins

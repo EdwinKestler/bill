@@ -39,7 +39,10 @@ def _paths_overlap(left: Path, right: Path) -> bool:
 def _validate_mutinynet_indexer(url: str) -> str:
     parsed = urlparse(url)
     electrum_hosts = {"electrum.mutinynet.com"}
-    esplora_hosts = {"mutinynet.com"}
+    esplora_hosts = {
+        "esplora.signet.kaleidoswap.com",
+        "mutinynet.com",
+    }
     is_electrum = parsed.scheme in {"ssl", "tcp"} and parsed.hostname in electrum_hosts
     is_esplora = parsed.scheme == "https" and parsed.hostname in esplora_hosts
     if not (is_electrum or is_esplora):
@@ -60,6 +63,7 @@ class RgbSettings:
     peer_data_dir: Path
     inbox_dir: Path
     electrum_url: str
+    wallet_label: str = ""
     master_fingerprint: str | None = None
     mnemonic_file: Path | None = None
     min_confirmations: int = 1
@@ -93,6 +97,12 @@ class RgbSettings:
 
         fingerprint_name = f"RGB_MASTER_FINGERPRINT_{role.value}"
         mnemonic_name = f"RGB_MNEMONIC_FILE_{role.value}"
+        label_name = f"RGB_WALLET_LABEL_{role.value}"
+        wallet_label = env.get(label_name, "").strip() or f"Wallet {role.value}"
+        if len(wallet_label) > 80 or not wallet_label.isprintable():
+            raise SettingsError(
+                f"{label_name} must be printable and at most 80 characters"
+            )
         fingerprint = env.get(fingerprint_name) or None
         mnemonic_raw = env.get(mnemonic_name) or None
         mnemonic_file = (
@@ -127,8 +137,12 @@ class RgbSettings:
             peer_data_dir=peer,
             inbox_dir=inbox,
             electrum_url=_validate_mutinynet_indexer(
-                env.get("ELECTRUM_URL", "https://mutinynet.com/api")
+                env.get(
+                    "ELECTRUM_URL",
+                    "https://esplora.signet.kaleidoswap.com",
+                )
             ),
+            wallet_label=wallet_label,
             master_fingerprint=fingerprint,
             mnemonic_file=mnemonic_file,
             min_confirmations=min_confirmations,

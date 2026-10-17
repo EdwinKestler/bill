@@ -106,6 +106,7 @@ class DockGatt {
   uint32_t inboundLastFrameCrc_ = 0;
   bool echoNextTransfer_ = false;
   bool tapDiscardRequested_ = false;
+  bool dockReceiveRequested_ = false;
   uint8_t preparedKind_ = 0;
   uint32_t preparedDenominationCents_ = 0;
 

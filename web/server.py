@@ -21,6 +21,8 @@ from web.device_registry import (
     DeviceRegistryError,
     RegisteredBillGateway,
 )
+from web.bearer_web import BearerWebError, BearerWebService
+from web.qvac_intent import QvacIntentError, QvacIntentService
 from web.rgb_web import RgbWebError, RgbWebService
 
 STATIC = Path(__file__).resolve().parent / "static"
@@ -33,7 +35,9 @@ _state_lock = threading.RLock()
 _confirm_lock = threading.Lock()
 _workflow_lock = threading.RLock()
 _rgb_service: RgbWebService | None = None
+_bearer_service: BearerWebService | None = None
 _device_registry: DeviceRegistry | None = None
+_qvac_service: QvacIntentService | None = None
 
 P = ParamSpec("P")
 R = TypeVar("R")
@@ -51,6 +55,8 @@ _state: dict[str, Any] = {
     "asset_id": os.environ.get("RGB_ASSET_ID") or None,
     "asset_precision": os.environ.get("RGB_ASSET_PRECISION") or None,
     "expected_receive_cents": None,
+    "bearer": None,
+    "wallet": None,
 }
 
 
@@ -83,7 +89,30 @@ def _bill() -> dict[str, Any]:
             "asset_id": _state["asset_id"],
             "asset_precision": _state["asset_precision"],
             "device": device,
+            "bearer": dict(_state["bearer"]) if _state["bearer"] else None,
+            "wallet": dict(_state["wallet"]) if _state["wallet"] else None,
         }
+
+
+def _public_wallet_identity(service: RgbWebService) -> dict[str, Any]:
+    """Describe the open wallet without exposing paths or credentials."""
+
+    role = service.role.value
+    settings = service.settings
+    return {
+        "label": settings.wallet_label or f"Wallet {role}",
+        "role": role,
+        "network": "Mutinynet",
+        "master_fingerprint": settings.master_fingerprint,
+        "asset_id": service.asset_id,
+        "purpose": "Issues or redeems whole-value bearer notes",
+        "bearer_target": (
+            "Unknown until redemption; issuance funds a fresh disposable "
+            "note wallet"
+        ),
+        "profile_setting": f"RGB_DATA_DIR_{role}",
+        "restart_required_to_switch": True,
+    }
 
 
 def _service(selected: RgbWebService | None) -> RgbWebService:
@@ -97,7 +126,34 @@ def _service(selected: RgbWebService | None) -> RgbWebService:
     return service
 
 
+def _bearer(selected: BearerWebService | None) -> BearerWebService:
+    service = selected or _bearer_service
+    if service is None:
+        raise BearerWebError(
+            "bearer-note web service is not initialized",
+            retryable=True,
+            broadcast=False,
+        )
+    return service
+
+
+def _qvac(selected: QvacIntentService | None) -> QvacIntentService:
+    service = selected or _qvac_service
+    if service is None:
+        raise QvacIntentError("local QVAC intent service is not initialized")
+    return service
+
+
 def _error(exc: Exception, *, retryable: bool = True) -> dict[str, Any]:
+    if isinstance(exc, BearerWebError):
+        return {
+            "ok": False,
+            "error": str(exc),
+            "retryable": exc.retryable,
+            "broadcast": exc.broadcast,
+            "recovery_action": exc.recovery_action,
+            "mode": MODE,
+        }
     if isinstance(exc, RgbWebError):
         return {
             "ok": False,
@@ -491,22 +547,923 @@ def handle_plan(cents: int, service: RgbWebService | None = None) -> dict[str, A
     }
 
 
+def _bearer_pending(outcome: dict[str, object]) -> dict[str, Any]:
+    plan = dict(outcome["plan"])  # type: ignore[arg-type]
+    pending = {
+        "id": str(plan["plan_id"]),
+        "action": "bearer-redemption",
+        "note_id": str(plan["note_id"]),
+        "cents": int(plan["denomination_cents"]),
+        "ticker": "USDT",
+        "asset_id": str(plan["asset_id"]),
+        "amount_base_units": int(plan["amount_base_units"]),
+        "recipient_id": str(plan["recipient_id"]),
+        "witness_amount_sat": int(plan["witness_amount_sat"]),
+        "fee_rate_sat_vb": int(plan["fee_rate_sat_vb"]),
+        "min_confirmations": int(plan["min_confirmations"]),
+        "expiration_timestamp": int(plan["expiration_timestamp"]),
+        "invoice_sha256": str(plan["recipient_invoice_sha256"]),
+        "capsule_sha256": str(plan["capsule_sha256"]),
+        "confirmation_phrase": f"CONFIRM {plan['plan_id']}",
+        "donation": True,
+        "transport_endpoints": [],
+        "note": (
+            "Redeem this exact offline bearer note into this dock's wallet on "
+            "Mutinynet. Verify the wallet fingerprint, review the immutable "
+            "plan, and type its exact confirmation phrase."
+        ),
+    }
+    return pending
+
+
+def _bearer_funding_pending(
+    outcome: dict[str, object], wallet: RgbWebService
+) -> dict[str, Any]:
+    plan = dict(outcome["plan"])  # type: ignore[arg-type]
+    return {
+        "id": str(plan["plan_id"]),
+        "action": "bearer-funding",
+        "note_id": str(plan["note_id"]),
+        "cents": int(plan["denomination_cents"]),
+        "ticker": "USDT",
+        "asset_id": str(plan["asset_id"]),
+        "amount_base_units": int(plan["amount_base_units"]),
+        "balance_before_cents": wallet.cents_from_base_units(
+            int(plan["source_spendable_before"])
+        ),
+        "recipient_id": str(plan["recipient_id"]),
+        "witness_amount_sat": int(plan["witness_amount_sat"]),
+        "fee_rate_sat_vb": int(plan["fee_rate_sat_vb"]),
+        "min_confirmations": int(plan["min_confirmations"]),
+        "expiration_timestamp": int(plan["expiration_timestamp"]),
+        "invoice_sha256": str(plan["recipient_invoice_sha256"]),
+        "confirmation_phrase": f"CONFIRM {plan['plan_id']}",
+        "donation": True,
+        "transport_endpoints": [],
+        "note": (
+            "Fund this fresh disposable bearer note with exactly $5.00 USDT on "
+            "Mutinynet. The eventual redemption wallet is still unknown. Review "
+            "the immutable plan and type its exact confirmation phrase."
+        ),
+    }
+
+
+def _bearer_funding_capacity_pending(outcome: dict[str, object]) -> dict[str, Any]:
+    plan = dict(outcome["plan"])  # type: ignore[arg-type]
+    return {
+        "id": str(plan["plan_id"]),
+        "action": "bearer-funding-capacity",
+        "note_id": str(plan["note_id"]),
+        "utxo_count": int(plan["utxo_count"]),
+        "utxo_size_sat": int(plan["utxo_size_sat"]),
+        "vanilla_spendable_before": int(plan["vanilla_spendable_before"]),
+        "free_colorable_utxo_count_before": int(
+            plan["free_colorable_utxo_count_before"]
+        ),
+        "fee_rate_sat_vb": int(plan["fee_rate_sat_vb"]),
+        "expiration_timestamp": int(plan["expiration_timestamp"]),
+        "confirmation_phrase": f"CONFIRM {plan['plan_id']}",
+        "note": (
+            "The rejected RGB send created no transfer. Create one 8,000-sat "
+            "colorable UTXO in this dock wallet, using a separate Bitcoin "
+            "transaction and confirmation. This does not fund the note yet."
+        ),
+    }
+
+
+def _bearer_btc_topup_pending(outcome: dict[str, object]) -> dict[str, Any]:
+    plan = dict(outcome["plan"])  # type: ignore[arg-type]
+    return {
+        "id": str(plan["plan_id"]),
+        "action": "bearer-note-btc-topup",
+        "note_id": str(plan["note_id"]),
+        "destination_address": str(plan["destination_address"]),
+        "topup_amount_sat": int(plan["topup_amount_sat"]),
+        "target_note_vanilla_sat": int(plan["target_note_vanilla_sat"]),
+        "note_vanilla_spendable_before": int(
+            plan["note_vanilla_spendable_before"]
+        ),
+        "source_vanilla_spendable_before": int(
+            plan["source_vanilla_spendable_before"]
+        ),
+        "fee_rate_sat_vb": int(plan["fee_rate_sat_vb"]),
+        "expiration_timestamp": int(plan["expiration_timestamp"]),
+        "confirmation_phrase": f"CONFIRM {plan['plan_id']}",
+        "note": (
+            "Fund this disposable note's Bitcoin fee reserve from the issuing "
+            "dock wallet on Mutinynet. This replaces the faucet step and does "
+            "not fund the $5 RGB value yet. Review the immutable plan and type "
+            "its exact confirmation phrase."
+        ),
+    }
+
+
+@_serialized_workflow
+def handle_bearer_prepare(
+    *,
+    check_existing: bool = False,
+    service: BearerWebService | None = None,
+    wallet_service: RgbWebService | None = None,
+) -> dict[str, Any]:
+    """Prepare or refresh one note, but never confirm or touch bill storage."""
+
+    try:
+        selected = _bearer(service)
+        wallet = _service(wallet_service)
+        if check_existing:
+            outcome = selected.inspect_funding()
+        else:
+            outcome = selected.prepare_funding()
+    except Exception as exc:
+        result = _error(exc)
+        result["reply"] = result["error"]
+        return result
+
+    if outcome is None:
+        bill = _bill()
+        return {
+            "ok": True,
+            "reply": (
+                f"No unfinished note belongs to this wallet. It shows "
+                f"${bill['cents'] / 100:.2f} and state {bill['status']}."
+            ),
+            "pending": None,
+            "broadcast": False,
+            "bill": bill,
+        }
+
+    selected_note = str(outcome["note_id"])
+    if bool(outcome.get("settled")) or outcome.get("note_state") == "ACTIVE":
+        with _state_lock:
+            _state["pending"] = None
+            _state["status"] = "note-ready-to-load"
+            _state["settlement"] = "funded-note-active"
+            _state["bearer"] = {
+                "step": 1,
+                "phase": "ready-to-load",
+                "offline": False,
+                "note_id": selected_note,
+            }
+        return {
+            "ok": True,
+            "reply": "The $5 note is settled. Click Load note to place it on the empty bill.",
+            "pending": None,
+            "broadcast": False,
+            "qvac_action": "LOAD_NOTE",
+            "bill": _bill(),
+        }
+
+    if outcome.get("phase") == "bearer-funding-capacity-plan-ready":
+        pending = _bearer_funding_capacity_pending(outcome)
+        with _state_lock:
+            _state["pending"] = pending
+            _state["status"] = "note-funding-capacity-confirmation-required"
+            _state["settlement"] = "not-broadcast"
+            _state["recovery"] = None
+            _state["bearer"] = {
+                "step": 0,
+                "phase": "funding-capacity-plan-ready",
+                "offline": False,
+                "note_id": selected_note,
+            }
+        return {
+            "ok": True,
+            "reply": pending["note"],
+            "pending": pending,
+            "broadcast": False,
+            "qvac_action": "INSPECT_NOTE",
+            "bill": _bill(),
+        }
+
+    if outcome.get("phase") == "bearer-note-btc-topup-plan-ready":
+        pending = _bearer_btc_topup_pending(outcome)
+        with _state_lock:
+            _state["pending"] = pending
+            _state["status"] = "note-btc-topup-confirmation-required"
+            _state["settlement"] = "not-broadcast"
+            _state["recovery"] = None
+            _state["bearer"] = {
+                "step": 0,
+                "phase": "btc-topup-plan-ready",
+                "offline": False,
+                "note_id": selected_note,
+            }
+        return {
+            "ok": True,
+            "reply": pending["note"],
+            "pending": pending,
+            "broadcast": False,
+            "qvac_action": "LOAD_NOTE",
+            "bill": _bill(),
+        }
+
+    if outcome.get("phase") == "live-note-btc-topup-waiting":
+        txid = str(outcome.get("txid") or "")
+        with _state_lock:
+            _state["pending"] = None
+            _state["status"] = "note-btc-topup-waiting"
+            _state["settlement"] = "waiting-confirmations"
+            _state["recovery"] = None
+            _state["bearer"] = {
+                "step": 0,
+                "phase": "btc-topup-waiting",
+                "offline": False,
+                "note_id": selected_note,
+                "txid": txid,
+            }
+        return {
+            "ok": True,
+            "reply": (
+                "The issuing dock funded the note's Bitcoin fee reserve once. "
+                "Wait for one Mutinynet confirmation, then ask QVAC ‘check my "
+                "note’. The $5 RGB funding send has not occurred."
+            ),
+            "pending": None,
+            "broadcast": True,
+            "txid": txid,
+            "qvac_action": "INSPECT_NOTE",
+            "bill": _bill(),
+        }
+
+    if outcome.get("phase") == "live-funding-capacity-waiting":
+        txid = str(outcome.get("txid") or "")
+        with _state_lock:
+            _state["pending"] = None
+            _state["status"] = "note-funding-capacity-waiting"
+            _state["settlement"] = "waiting-confirmations"
+            _state["recovery"] = None
+            _state["bearer"] = {
+                "step": 0,
+                "phase": "funding-capacity-waiting",
+                "offline": False,
+                "note_id": selected_note,
+                "txid": txid,
+            }
+        return {
+            "ok": True,
+            "reply": (
+                "The source-wallet capacity transaction is recorded but is not "
+                "confirmed yet. Wait for one Mutinynet confirmation, then ask "
+                "QVAC ‘check my note’. The RGB funding send has not occurred."
+            ),
+            "pending": None,
+            "broadcast": True,
+            "txid": txid,
+            "qvac_action": "INSPECT_NOTE",
+            "bill": _bill(),
+        }
+
+    preflight = dict(outcome.get("redemption_btc_preflight") or {})
+    if outcome.get("funding_gate") != "READY_FOR_CONFIRMATION":
+        with _state_lock:
+            _state["pending"] = None
+            _state["status"] = "note-btc-topup-recovery-required"
+            _state["settlement"] = "not-broadcast"
+            _state["bearer"] = {
+                "step": 0,
+                "phase": "btc-topup-recovery-required",
+                "offline": False,
+                "note_id": selected_note,
+            }
+        return {
+            "ok": False,
+            "reply": (
+                "The note still lacks its Bitcoin fee reserve, but no automatic "
+                "top-up plan was produced. Use Recover; do not fund an unverified "
+                "address or attempt the RGB send."
+            ),
+            "pending": None,
+            "preflight": preflight,
+            "broadcast": False,
+            "retryable": False,
+            "qvac_action": "INSPECT_NOTE",
+            "bill": _bill(),
+        }
+
+    pending = _bearer_funding_pending(outcome, wallet)
+    with _state_lock:
+        _state["pending"] = pending
+        _state["status"] = "note-funding-confirmation-required"
+        _state["settlement"] = "not-broadcast"
+        _state["recovery"] = None
+        _state["bearer"] = {
+            "step": 1,
+            "phase": "funding-plan-ready",
+            "offline": False,
+            "note_id": selected_note,
+        }
+    return {
+        "ok": True,
+        "reply": pending["note"],
+        "pending": pending,
+        "broadcast": False,
+        "qvac_action": "LOAD_NOTE",
+        "bill": _bill(),
+    }
+
+
+@_serialized_workflow
+def handle_bearer_load(
+    note_id: str | None = None,
+    service: BearerWebService | None = None,
+    registry: DeviceRegistry | None = None,
+) -> dict[str, Any]:
+    """Load one already-funded capsule without creating or spending another note."""
+
+    try:
+        selected = _bearer(service)
+        _connection, artifact = _inspect_registered_bill(registry)
+        if artifact["direction"] == "blocked":
+            raise _blocked_inventory_error(artifact)
+        if artifact["direction"] != "empty":
+            raise BearerWebError(
+                "The registered bill is not empty. Pass or redeem its retained "
+                "artifact before loading another note.",
+                retryable=False,
+                broadcast=False,
+            )
+        bearer_state = _bill().get("bearer") or {}
+        selected_note_id = note_id or str(bearer_state.get("note_id") or "") or None
+        if bearer_state.get("phase") in {"funding-imported", "waiting-confirmations"}:
+            if selected_note_id is None:
+                raise BearerWebError(
+                    "the funding settlement has no selected note",
+                    retryable=False,
+                    broadcast=True,
+                )
+            funding = selected.refresh_funding(selected_note_id)
+            if not bool(funding.get("settled")):
+                with _state_lock:
+                    _state["status"] = "note-funding-waiting-confirmations"
+                    _state["settlement"] = "waiting-confirmations"
+                    _state["bearer"] = {
+                        "step": 1,
+                        "phase": "waiting-confirmations",
+                        "offline": False,
+                        "note_id": selected_note_id,
+                        "txid": funding.get("txid"),
+                    }
+                return {
+                    "ok": True,
+                    "reply": (
+                        "The funding transaction is recorded but not settled yet. "
+                        "Wait for one Mutinynet confirmation, then click Load note again."
+                    ),
+                    "broadcast": False,
+                    "settled": False,
+                    "bill": _bill(),
+                }
+            with _state_lock:
+                _state["status"] = "note-ready-to-load"
+                _state["settlement"] = "funded-note-active"
+                _state["bearer"] = {
+                    "step": 1,
+                    "phase": "ready-to-load",
+                    "offline": False,
+                    "note_id": selected_note_id,
+                    "txid": funding.get("txid"),
+                }
+        outcome = selected.load_note(selected_note_id)
+    except Exception as exc:
+        result = _error(exc)
+        result["reply"] = result["error"]
+        if result.get("recovery_action") == "retry-bearer-load":
+            with _state_lock:
+                _state["status"] = "bearer-load-recovery-required"
+                _state["recovery"] = {
+                    "action": "retry-bearer-load",
+                    "endpoint": "/api/bearer/load",
+                    "note_id": note_id,
+                    "retry_send": False,
+                }
+        return result
+    receipt = {"action": "bearer-load", "source": MODE, **outcome}
+    with _state_lock:
+        _state["status"] = "bearer-loaded"
+        _state["settlement"] = "funded-note-active"
+        _state["recovery"] = None
+        _state["bearer"] = {
+            "step": 2,
+            "phase": "loaded",
+            "offline": True,
+            "note_id": outcome["note_id"],
+            "artifact_sha256": outcome["artifact_sha256"],
+        }
+        _state["receipts"].insert(0, receipt)
+    return {
+        "ok": True,
+        "reply": "Funded $5 bearer note loaded. Take the bill offline and use Pass note.",
+        "broadcast": False,
+        "receipt": receipt,
+        "bill": _bill(),
+    }
+
+
+@_serialized_workflow
+def handle_bearer_pass(
+    service: BearerWebService | None = None,
+    registry: DeviceRegistry | None = None,
+) -> dict[str, Any]:
+    """Verify a held capsule and display the dock-free physical handoff step."""
+
+    try:
+        selected = _bearer(service)
+        _connection, artifact = _inspect_registered_bill(registry)
+        if artifact["direction"] == "blocked":
+            raise _blocked_inventory_error(artifact)
+        if artifact["kind"] != int(FrameKind.BEARER_NOTE) or artifact[
+            "direction"
+        ] not in {"to-peer", "bearer-held"}:
+            raise BearerWebError(
+                "This bill does not hold a transferable bearer note.",
+                retryable=False,
+                broadcast=False,
+            )
+        if artifact["denomination_cents"] != 500:
+            raise BearerWebError(
+                "The held bearer note is not the fixed $5 demo denomination.",
+                retryable=False,
+                broadcast=False,
+            )
+        outcome = selected.pass_note()
+    except Exception as exc:
+        result = _error(exc)
+        result["reply"] = result["error"]
+        return result
+    with _state_lock:
+        _state["status"] = "offline-pass-ready"
+        _state["recovery"] = None
+        _state["bearer"] = {
+            "step": 3,
+            "phase": "offline-pass",
+            "offline": True,
+            "note_id": (_state["bearer"] or {}).get("note_id"),
+        }
+    return {
+        "ok": True,
+        "reply": outcome["instruction"],
+        **outcome,
+        "bill": _bill(),
+    }
+
+
+@_serialized_workflow
+def handle_bearer_redeem(
+    service: BearerWebService | None = None,
+    registry: DeviceRegistry | None = None,
+) -> dict[str, Any]:
+    """Extract one capsule and prepare, but never auto-confirm, this dock's plan."""
+
+    try:
+        selected = _bearer(service)
+        _connection, artifact = _inspect_registered_bill(registry)
+        if artifact["direction"] == "blocked":
+            raise _blocked_inventory_error(artifact)
+        receive_from_bill = artifact["direction"] == "bearer-held" and artifact[
+            "kind"
+        ] == int(FrameKind.BEARER_NOTE)
+        if receive_from_bill and artifact["denomination_cents"] != 500:
+            raise BearerWebError(
+                "The held bearer note is not the fixed $5 demo denomination.",
+                retryable=False,
+                broadcast=False,
+            )
+        if not receive_from_bill and artifact["direction"] != "empty":
+            raise BearerWebError(
+                "The dock expected a held bearer note or an empty bill with a "
+                "retained extraction recovery.",
+                retryable=False,
+                broadcast=False,
+            )
+        outcome = selected.prepare_redemption(receive_from_bill=receive_from_bill)
+        pending = _bearer_pending(outcome)
+    except Exception as exc:
+        result = _error(exc)
+        result["reply"] = result["error"]
+        result["pending"] = None
+        if result.get("recovery_action") == "retry-bearer-plan":
+            with _state_lock:
+                _state["status"] = "bearer-plan-recovery-required"
+                _state["recovery"] = {
+                    "action": "retry-bearer-plan",
+                    "endpoint": "/api/bearer/redeem",
+                    "retry_send": False,
+                }
+        return result
+    receipt = {
+        "action": "bearer-extract-and-plan",
+        "source": MODE,
+        "note_id": outcome["note_id"],
+        "capsule_sha256": outcome["capsule_sha256"],
+        "capsule_bytes": outcome["capsule_bytes"],
+        "ble_session_id": outcome["ble_session_id"],
+        "plan_id": pending["id"],
+        "broadcast": False,
+    }
+    with _state_lock:
+        _state["pending"] = pending
+        _state["status"] = "bearer-confirmation-required"
+        _state["settlement"] = "not-broadcast"
+        _state["recovery"] = None
+        _state["bearer"] = {
+            "step": 5,
+            "phase": "confirmation-required",
+            "offline": False,
+            "note_id": outcome["note_id"],
+            "artifact_sha256": outcome["capsule_sha256"],
+        }
+        _state["receipts"].insert(0, receipt)
+    return {
+        "ok": True,
+        "reply": pending["note"],
+        "pending": pending,
+        "broadcast": False,
+        "receipt": receipt,
+        "bill": _bill(),
+    }
+
+
+def _handle_bearer_confirm(
+    pending: dict[str, Any],
+    phrase: str,
+    service: BearerWebService | None,
+) -> dict[str, Any]:
+    selected = _bearer(service)
+    try:
+        outcome = selected.execute_redemption(
+            note_id=str(pending["note_id"]),
+            plan_id=str(pending["id"]),
+            confirmation_phrase=phrase,
+        )
+    except Exception as exc:
+        result = _error(exc)
+        if isinstance(exc, BearerWebError) and exc.recovery_action:
+            recovery = {
+                "action": exc.recovery_action,
+                "endpoint": (
+                    "/api/bearer/recover"
+                    if exc.recovery_action == "recover-bearer-redemption"
+                    else None
+                ),
+                "note_id": pending["note_id"],
+                "retry_send": False,
+                "broadcast": exc.broadcast,
+            }
+            with _state_lock:
+                _state["pending"] = None
+                _state["status"] = "bearer-redemption-recovery-required"
+                _state["settlement"] = "unknown"
+                _state["recovery"] = recovery
+            result["recovery"] = recovery
+        return result
+
+    receipt = {
+        "action": "bearer-redemption",
+        "source": MODE,
+        "status": "redemption-imported",
+        "settlement": "waiting-confirmations",
+        "retry_send": False,
+        **outcome,
+    }
+    with _state_lock:
+        _state["pending"] = None
+        _state["status"] = "bearer-redemption-imported"
+        _state["settlement"] = "waiting-confirmations"
+        _state["recovery"] = None
+        _state["bearer"] = {
+            "step": 6,
+            "phase": "waiting-confirmations",
+            "offline": False,
+            "note_id": pending["note_id"],
+            "txid": outcome.get("txid"),
+        }
+        _state["receipts"].insert(0, receipt)
+    return {
+        "ok": True,
+        "completed": True,
+        "broadcast": True,
+        "recovery_required": False,
+        "retry_send": False,
+        "receipt": receipt,
+        "bill": _bill(),
+    }
+
+
+@_serialized_workflow
+def handle_bearer_recover(
+    note_id: str | None = None,
+    service: BearerWebService | None = None,
+) -> dict[str, Any]:
+    selected_note = note_id or str((_bill().get("bearer") or {}).get("note_id") or "")
+    if not selected_note:
+        return _error(
+            BearerWebError(
+                "no bearer note is selected for recovery",
+                retryable=False,
+                broadcast=False,
+            )
+        )
+    try:
+        outcome = _bearer(service).recover_redemption(selected_note)
+    except Exception as exc:
+        return _error(exc)
+    phase = str(outcome.get("phase", ""))
+    if phase == "bearer-redemption-plan-ready":
+        pending = _bearer_pending(outcome)
+        with _state_lock:
+            _state["pending"] = pending
+            _state["status"] = "bearer-confirmation-required"
+            _state["settlement"] = "not-broadcast"
+            _state["recovery"] = None
+            _state["bearer"] = {
+                "step": 5,
+                "phase": "confirmation-required",
+                "offline": False,
+                "note_id": selected_note,
+                "artifact_sha256": outcome["capsule_sha256"],
+            }
+        return {
+            "ok": True,
+            "reply": (
+                "The expired plan was safely superseded. Review and confirm "
+                "the new immutable plan."
+            ),
+            "pending": pending,
+            "broadcast": False,
+            "bill": _bill(),
+        }
+    blocked = phase.endswith("recovery-blocked")
+    if blocked:
+        with _state_lock:
+            _state["status"] = "manual-reconciliation-required"
+            _state["settlement"] = "unknown"
+            _state["recovery"] = {
+                "action": "manual-bearer-reconciliation",
+                "note_id": selected_note,
+                "retry_send": False,
+            }
+        return {
+            "ok": False,
+            "error": str(outcome.get("instruction")),
+            "retryable": False,
+            "broadcast": outcome.get("broadcast"),
+            "retry_send": False,
+            "bill": _bill(),
+        }
+    with _state_lock:
+        _state["status"] = "bearer-redemption-imported"
+        _state["settlement"] = "waiting-confirmations"
+        _state["recovery"] = None
+        _state["bearer"] = {
+            "step": 6,
+            "phase": "waiting-confirmations",
+            "offline": False,
+            "note_id": selected_note,
+            "txid": outcome.get("txid"),
+        }
+        _state["receipts"].insert(
+            0, {"action": "bearer-redemption-recovery", "retry_send": False, **outcome}
+        )
+    return {"ok": True, "broadcast": True, "retry_send": False, "bill": _bill()}
+
+
+@_serialized_workflow
+def handle_bearer_refresh(
+    note_id: str | None = None,
+    service: BearerWebService | None = None,
+    wallet_service: RgbWebService | None = None,
+) -> dict[str, Any]:
+    selected_note = note_id or str((_bill().get("bearer") or {}).get("note_id") or "")
+    if not selected_note:
+        return _error(
+            BearerWebError(
+                "no redeemed bearer note is selected for settlement refresh",
+                retryable=False,
+                broadcast=True,
+            )
+        )
+    try:
+        outcome = _bearer(service).refresh_redemption(selected_note)
+    except Exception as exc:
+        return _error(exc)
+    settled = bool(outcome.get("settled"))
+    with _state_lock:
+        _state["status"] = "settled" if settled else "waiting-confirmations"
+        _state["settlement"] = "settled" if settled else "waiting-confirmations"
+        _state["cents"] = _service(wallet_service).spendable_cents()
+        _state["bearer"] = {
+            "step": 7 if settled else 6,
+            "phase": "settled" if settled else "waiting-confirmations",
+            "offline": False,
+            "note_id": selected_note,
+            "txid": outcome.get("txid"),
+        }
+        _state["receipts"].insert(0, {"action": "bearer-settlement-refresh", **outcome})
+    return {"ok": True, "broadcast": False, **outcome, "bill": _bill()}
+
+
+def _handle_bearer_funding_confirm(
+    pending: dict[str, Any],
+    phrase: str,
+    bearer_service: BearerWebService | None,
+    wallet_service: RgbWebService | None,
+) -> dict[str, Any]:
+    try:
+        outcome = _bearer(bearer_service).execute_funding(
+            note_id=str(pending["note_id"]),
+            plan_id=str(pending["id"]),
+            confirmation_phrase=phrase,
+        )
+    except Exception as exc:
+        result = _error(exc)
+        if not result.get("retryable"):
+            with _state_lock:
+                _state["pending"] = None
+                _state["status"] = "note-funding-recovery-required"
+                _state["settlement"] = "unknown"
+                _state["recovery"] = {
+                    "action": "inspect-note-funding",
+                    "note_id": pending["note_id"],
+                    "retry_send": False,
+                }
+            result["recovery"] = _bill()["recovery"]
+        return result
+
+    receipt = {
+        "action": "bearer-funding",
+        "source": MODE,
+        "status": "funding-imported",
+        "settlement": "waiting-confirmations",
+        "retry_send": False,
+        **outcome,
+    }
+    try:
+        cents = _service(wallet_service).spendable_cents()
+    except Exception:
+        cents = int(_state["cents"]) - int(pending["cents"])
+    with _state_lock:
+        _state["pending"] = None
+        _state["cents"] = cents
+        _state["status"] = "note-funding-imported"
+        _state["settlement"] = "waiting-confirmations"
+        _state["recovery"] = None
+        _state["bearer"] = {
+            "step": 1,
+            "phase": "funding-imported",
+            "offline": False,
+            "note_id": pending["note_id"],
+            "txid": outcome.get("txid"),
+        }
+        _state["receipts"].insert(0, receipt)
+    return {
+        "ok": True,
+        "completed": True,
+        "broadcast": True,
+        "retry_send": False,
+        "receipt": receipt,
+        "reply": (
+            "The $5 funding send was broadcast once and imported into the disposable "
+            "note wallet. After one Mutinynet confirmation, click Load note."
+        ),
+        "bill": _bill(),
+    }
+
+
+def _handle_bearer_funding_capacity_confirm(
+    pending: dict[str, Any],
+    phrase: str,
+    bearer_service: BearerWebService | None,
+) -> dict[str, Any]:
+    try:
+        outcome = _bearer(bearer_service).execute_funding_capacity(
+            note_id=str(pending["note_id"]),
+            plan_id=str(pending["id"]),
+            confirmation_phrase=phrase,
+        )
+    except Exception as exc:
+        result = _error(exc)
+        if not result.get("retryable"):
+            with _state_lock:
+                _state["pending"] = None
+                _state["status"] = "note-funding-capacity-recovery-required"
+                _state["settlement"] = "unknown"
+                _state["recovery"] = {
+                    "action": "inspect-note-funding",
+                    "note_id": pending["note_id"],
+                    "retry_send": False,
+                }
+            result["recovery"] = _bill()["recovery"]
+        return result
+
+    receipt = {
+        "action": "bearer-funding-capacity",
+        "source": MODE,
+        "status": "capacity-broadcast-recorded",
+        "settlement": "waiting-confirmations",
+        "retry_send": False,
+        **outcome,
+    }
+    with _state_lock:
+        _state["pending"] = None
+        _state["status"] = "note-funding-capacity-waiting"
+        _state["settlement"] = "waiting-confirmations"
+        _state["recovery"] = None
+        _state["bearer"] = {
+            "step": 0,
+            "phase": "funding-capacity-waiting",
+            "offline": False,
+            "note_id": pending["note_id"],
+            "txid": outcome.get("txid"),
+        }
+        _state["receipts"].insert(0, receipt)
+    return {
+        "ok": True,
+        "completed": True,
+        "broadcast": True,
+        "retry_send": False,
+        "receipt": receipt,
+        "reply": (
+            "The separate source-wallet capacity transaction was broadcast once. "
+            "Wait for one Mutinynet confirmation, then ask QVAC ‘check my note’."
+        ),
+        "bill": _bill(),
+    }
+
+
+def _handle_bearer_btc_topup_confirm(
+    pending: dict[str, Any],
+    phrase: str,
+    bearer_service: BearerWebService | None,
+) -> dict[str, Any]:
+    try:
+        outcome = _bearer(bearer_service).execute_btc_topup(
+            note_id=str(pending["note_id"]),
+            plan_id=str(pending["id"]),
+            confirmation_phrase=phrase,
+        )
+    except Exception as exc:
+        result = _error(exc)
+        if not result.get("retryable"):
+            with _state_lock:
+                _state["pending"] = None
+                _state["status"] = "note-btc-topup-recovery-required"
+                _state["settlement"] = "unknown"
+                _state["recovery"] = {
+                    "action": "inspect-note-funding",
+                    "note_id": pending["note_id"],
+                    "retry_send": False,
+                }
+            result["recovery"] = _bill()["recovery"]
+        return result
+
+    receipt = {
+        "action": "bearer-note-btc-topup",
+        "source": MODE,
+        "status": "btc-topup-broadcast-recorded",
+        "settlement": "waiting-confirmations",
+        "retry_send": False,
+        **outcome,
+    }
+    with _state_lock:
+        _state["pending"] = None
+        _state["status"] = "note-btc-topup-waiting"
+        _state["settlement"] = "waiting-confirmations"
+        _state["recovery"] = None
+        _state["bearer"] = {
+            "step": 0,
+            "phase": "btc-topup-waiting",
+            "offline": False,
+            "note_id": pending["note_id"],
+            "txid": outcome.get("txid"),
+        }
+        _state["receipts"].insert(0, receipt)
+    return {
+        "ok": True,
+        "completed": True,
+        "broadcast": True,
+        "retry_send": False,
+        "receipt": receipt,
+        "reply": (
+            "The issuing dock funded the disposable note's Bitcoin fee reserve "
+            "once. Wait for one Mutinynet confirmation, then ask QVAC ‘check my "
+            "note’ to prepare the separate $5 RGB funding plan."
+        ),
+        "bill": _bill(),
+    }
+
+
 @_serialized_workflow
 def handle_confirm(
     confirm_id: str,
     phrase: str,
     service: RgbWebService | None = None,
+    bearer_service: BearerWebService | None = None,
 ) -> dict[str, Any]:
-    try:
-        selected = _service(service)
-    except Exception as exc:
-        return _error(exc)
     with _confirm_lock:
         with _state_lock:
             pending = _state["pending"]
             if (
                 pending is None
-                or pending.get("action") != "rgb-send"
                 or pending.get("id") != confirm_id
             ):
                 return {
@@ -516,6 +1473,33 @@ def handle_confirm(
                     "broadcast": False,
                 }
             pending = dict(pending)
+
+        if pending.get("action") == "bearer-redemption":
+            return _handle_bearer_confirm(pending, phrase, bearer_service)
+        if pending.get("action") == "bearer-funding":
+            return _handle_bearer_funding_confirm(
+                pending, phrase, bearer_service, service
+            )
+        if pending.get("action") == "bearer-funding-capacity":
+            return _handle_bearer_funding_capacity_confirm(
+                pending, phrase, bearer_service
+            )
+        if pending.get("action") == "bearer-note-btc-topup":
+            return _handle_bearer_btc_topup_confirm(
+                pending, phrase, bearer_service
+            )
+        if pending.get("action") != "rgb-send":
+            return {
+                "ok": False,
+                "error": "pending operation is not confirmable",
+                "retryable": False,
+                "broadcast": False,
+            }
+
+        try:
+            selected = _service(service)
+        except Exception as exc:
+            return _error(exc)
 
         try:
             outcome = selected.confirm_and_stage(confirm_id, phrase)
@@ -778,6 +1762,71 @@ def handle_refresh(service: RgbWebService | None = None) -> dict[str, Any]:
     }
 
 
+@_serialized_workflow
+def handle_qvac(
+    text: str,
+    qvac_service: QvacIntentService | None = None,
+    bearer_service: BearerWebService | None = None,
+    wallet_service: RgbWebService | None = None,
+) -> dict[str, Any]:
+    """Classify locally, then hand the typed intent to deterministic policy."""
+
+    try:
+        intent = _qvac(qvac_service).classify(text)
+    except Exception as exc:
+        return {
+            "ok": False,
+            "error": f"{type(exc).__name__}: {exc}",
+            "reply": f"Local QVAC could not classify that request: {exc}",
+            "retryable": True,
+            "broadcast": False,
+        }
+
+    if intent.intent == "LOAD_NOTE":
+        result = handle_bearer_prepare(
+            service=bearer_service,
+            wallet_service=wallet_service,
+        )
+    elif intent.intent == "PASS_NOTE":
+        result = handle_bearer_pass(service=bearer_service)
+    elif intent.intent == "REDEEM_NOTE":
+        result = handle_bearer_redeem(service=bearer_service)
+    elif intent.intent == "INSPECT_NOTE":
+        result = handle_bearer_prepare(
+            check_existing=True,
+            service=bearer_service,
+            wallet_service=wallet_service,
+        )
+    elif intent.intent == "EXPLAIN_OR_RECOVER":
+        bill = _bill()
+        recovery = bill.get("recovery")
+        result = {
+            "ok": True,
+            "reply": (
+                "A recorded recovery is required. Use the displayed Recover control; "
+                "it will not repeat an RGB send."
+                if recovery
+                else "No recovery is recorded. Connect the bill and inspect its current state."
+            ),
+            "pending": bill["pending"],
+            "broadcast": False,
+            "bill": bill,
+        }
+    else:
+        result = {
+            "ok": True,
+            "reply": (
+                "QVAC did not map that request to a safe action. Try ‘prepare a $5 "
+                "note’, ‘check my note’, ‘pass this note’, or ‘redeem this note’."
+            ),
+            "pending": None,
+            "broadcast": False,
+            "bill": _bill(),
+        }
+    result["qvac"] = intent.public()
+    return result
+
+
 def handle_chat(
     text: str, service: RgbWebService | None = None
 ) -> dict[str, Any]:
@@ -853,6 +1902,22 @@ def handle_cancel(confirm_id: str) -> dict[str, Any]:
                 "broadcast": False,
                 "retryable": False,
             }
+        if pending.get("action") in {
+            "bearer-redemption",
+            "bearer-funding",
+            "bearer-funding-capacity",
+            "bearer-note-btc-topup",
+        }:
+            return {
+                "ok": False,
+                "error": (
+                    "The durable bearer plan remains reserved. "
+                    "Confirm it before expiry or use Recover to supersede an expired plan."
+                ),
+                "broadcast": False,
+                "retryable": False,
+                "bill": _bill(),
+            }
         _state["pending"] = None
         _state["status"] = "idle"
         _state["settlement"] = "not-broadcast"
@@ -908,10 +1973,23 @@ class DockHandler(SimpleHTTPRequestHandler):
             self._json(
                 200,
                 {
-                    "ok": _rgb_service is not None,
+                    "ok": _rgb_service is not None and _bearer_service is not None,
                     "role": _state["role"],
                     "bind": f"{HOST}:{PORT}",
                     "mode": MODE,
+                    "qvac": {
+                        "ready": (
+                            _qvac_service.ready
+                            if _qvac_service is not None
+                            else False
+                        ),
+                        "model": (
+                            _qvac_service.model_name
+                            if _qvac_service is not None
+                            else None
+                        ),
+                        "local": True,
+                    },
                     "settlement": _state["settlement"],
                     "device": (
                         _device_registry.snapshot()
@@ -946,6 +2024,10 @@ class DockHandler(SimpleHTTPRequestHandler):
             result = handle_chat(str(body.get("text") or ""))
             self._json(_status_code(result), result)
             return
+        if path == "/api/qvac":
+            result = handle_qvac(str(body.get("text") or ""))
+            self._json(_status_code(result), result)
+            return
         if path == "/api/workflow/send":
             try:
                 cents = int(body.get("cents", 500))
@@ -962,6 +2044,26 @@ class DockHandler(SimpleHTTPRequestHandler):
                 self._json(400, {"ok": False, "error": "cents must be an integer"})
                 return
             result = handle_receive_usdt(cents)
+            self._json(_status_code(result), result)
+            return
+        if path == "/api/bearer/load":
+            result = handle_bearer_load(str(body.get("note_id") or "") or None)
+            self._json(_status_code(result), result)
+            return
+        if path == "/api/bearer/pass":
+            result = handle_bearer_pass()
+            self._json(_status_code(result), result)
+            return
+        if path == "/api/bearer/redeem":
+            result = handle_bearer_redeem()
+            self._json(_status_code(result), result)
+            return
+        if path == "/api/bearer/recover":
+            result = handle_bearer_recover(str(body.get("note_id") or "") or None)
+            self._json(_status_code(result), result)
+            return
+        if path == "/api/bearer/refresh":
+            result = handle_bearer_refresh(str(body.get("note_id") or "") or None)
             self._json(_status_code(result), result)
             return
         if path == "/api/device/scan":
@@ -1026,13 +2128,16 @@ class DockHandler(SimpleHTTPRequestHandler):
 
 
 def main() -> None:
-    global _device_registry, _rgb_service
+    global _bearer_service, _device_registry, _qvac_service, _rgb_service
     service: RgbWebService | None = None
+    bearer_service: BearerWebService | None = None
     try:
         role = BillRole.parse(ROLE)
         registry = DeviceRegistry.from_env(role)
         gateway = RegisteredBillGateway(registry, timeout=registry.timeout)
         service = RgbWebService.from_env(gateway=gateway)
+        bearer_service = BearerWebService.from_env(service)
+        qvac_service = QvacIntentService.from_env()
         balance_cents = service.spendable_cents()
     except KeyboardInterrupt:
         if service is not None:
@@ -1050,6 +2155,9 @@ def main() -> None:
         raise SystemExit(1) from exc
     _device_registry = registry
     _rgb_service = service
+    _bearer_service = bearer_service
+    _qvac_service = qvac_service
+    qvac_service.start_background()
     registered_device = registry.snapshot()["device"]
     with _state_lock:
         _state.update(
@@ -1061,6 +2169,7 @@ def main() -> None:
                 "settlement": "settled",
                 "asset_id": service.asset_id,
                 "asset_precision": service.asset_precision,
+                "wallet": _public_wallet_identity(service),
                 "identity": (
                     registered_device["identity"]
                     if registered_device is not None
@@ -1071,8 +2180,11 @@ def main() -> None:
     try:
         server = ThreadingHTTPServer((HOST, PORT), DockHandler)
     except Exception:
+        qvac_service.close()
         service.close()
         _rgb_service = None
+        _bearer_service = None
+        _qvac_service = None
         _device_registry = None
         raise
     print(
@@ -1085,8 +2197,11 @@ def main() -> None:
         print("bill web dock stopped")
     finally:
         server.server_close()
+        qvac_service.close()
         service.close()
         _rgb_service = None
+        _bearer_service = None
+        _qvac_service = None
         _device_registry = None
 
 

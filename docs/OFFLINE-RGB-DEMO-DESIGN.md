@@ -9,7 +9,7 @@ or offline double-spend prevention.
 
 ## Demo claim
 
-A sender converts $5 of real RGB USDT into a disposable bearer note. The note
+A current owner converts $5 of real RGB USDT into a disposable bearer note. The note
 is carried by one ESP32 bill and can move Bill A -> Bill B -> Bill A -> Bill B
 over BLE while the docks and Internet are unavailable. The final holder later
 chooses a previously unknown RGB wallet, redeems the note, imports the exact
@@ -18,11 +18,11 @@ out-of-band consignment, and sees the balance settle on Mutinynet.
 The demo makes two real RGB transfers:
 
 ```text
-Wallet A --RGB funding--> one-use note wallet N
+issuing wallet --RGB funding--> one-use note wallet N
                               |
                               +-- bearer capability relayed offline over BLE
                               |
-one-use note wallet N --RGB redemption--> final Wallet B
+one-use note wallet N --RGB redemption--> holder-chosen wallet
 ```
 
 The middle BLE handoffs are deliberately **not** represented as RGB state
@@ -42,6 +42,12 @@ prototype, but that trust must be disclosed. The holder does not need an
 account. Possession of the claim secret is sufficient to request a redemption
 plan. A fresh recipient invoice is supplied only at redemption, so the final
 wallet is unknown at issuance.
+
+The dock's A/B profile is only a wallet-process and bill-registration slot.
+It is not an issuer/recipient permission. New note manifests bind issuance to
+the funding wallet's master fingerprint so a shared vault cannot offer another
+wallet's active note for loading. That fingerprint stays in private vault
+metadata and is not added to the bearer capsule.
 
 The vault may run as a third local process for the venue demo. Stop it or gate
 all access while showing the offline BLE relays. A later product would expose
@@ -149,6 +155,9 @@ ACTIVE/CLAIM_PLANNED -> BOUNCED when a previously spent outpoint is detected
 
 PRE_BROADCAST_REJECTED -> CAPACITY_PLANNED
  -> CAPACITY_BROADCAST_RECORDED -> CAPACITY_READY -> CLAIM_PLANNED
+
+AWAITING_FUNDING -> BTC_TOPUP_PLANNED
+ -> BTC_TOPUP_BROADCAST_RECORDED -> AWAITING_FUNDING
 ```
 
 Required invariants:
@@ -158,23 +167,30 @@ Required invariants:
    expiry, and plan ID.
 3. `CONFIRM <plan-id>` is fresh, exact, one-use, and consumed before send.
 4. The claim is atomically reserved before calling rgb-lib.
-5. Redemption preflight requires both fee sats and one free colorable UTXO. If
-   missing, its creation is a separate immutable, confirmation-gated Bitcoin
-   transaction; a consumed redemption confirmation never authorizes it.
-6. Broadcast results and exact consignment path/hash are committed before the
+5. Funding and redemption sends require both fee sats and a free colorable
+   UTXO. If capacity is missing, its creation is a separate immutable,
+   confirmation-gated Bitcoin transaction; a consumed RGB confirmation never
+   authorizes it. After capacity confirms, a fresh RGB plan and confirmation
+   are required.
+6. When a fresh note lacks its 2,000-sat fee reserve, the issuing dock prepares
+   a separate immutable Bitcoin top-up plan. Exact confirmation authorizes one
+   `send_btc` to the bound note address; it cannot authorize the RGB funding
+   send. A confirmed top-up always causes the stale RGB plan to be superseded
+   before a new RGB confirmation is shown.
+7. Broadcast results and exact consignment path/hash are committed before the
    API reports success.
-7. An ambiguous send is never retried automatically. A pinned rgb-lib
+8. An ambiguous send is never retried automatically. A pinned rgb-lib
    `InsufficientAllocationSlots` error may be reclassified as pre-broadcast
    only after the full RGB balance and absence of any send transfer are proven.
-8. Repeating a request returns the recorded result or a recovery state; it
+9. Repeating a request returns the recorded result or a recovery state; it
    cannot create a second send.
-9. An expired, unconsumed plan is archived as `SUPERSEDED`; its expiry is never
+10. An expired, unconsumed plan is archived as `SUPERSEDED`; its expiry is never
    extended in place and its confirmation can never authorize the replacement.
-10. The bill is cleared only after the final dock has durably received the
+11. The bill is cleared only after the final dock has durably received the
    result needed for import/recovery.
-11. A copied or already redeemed capability returns `BOUNCED` with the known
+12. A copied or already redeemed capability returns `BOUNCED` with the known
    winning txid when available.
-12. Wallet B reaches `REDEEMED` only after one exact `receive_witness` transfer
+13. The chosen destination wallet reaches `REDEEMED` only after one exact `receive_witness` transfer
     matches the redemption txid, contains one 5,000,000-unit assignment, and
     its settled/future/spendable balance reflects the recorded $5 delta.
 
@@ -183,13 +199,15 @@ Minimum operations:
 | Operation | Broadcast? | Output |
 | --- | --- | --- |
 | `note prepare` | No | note ID and transport-free note-wallet invoice |
+| `note BTC top-up plan` | No | immutable issuer-wallet reserve plan |
+| `note BTC top-up confirm` | Yes, once | recorded Mutinynet txid; no RGB send |
 | `note import-funding` | No | imported transfer state and capsule plan |
 | `note activate` | No | capsule after funding is accepted/settled by policy |
 | `note inspect` | No | redacted state; never returns the claim secret in logs |
 | `note redeem-plan` | No | immutable plan for a fresh final invoice |
 | `note redeem-confirm` | Yes | txid and exact OOB consignment, or ambiguous state |
 | `note recover` | No new send | re-import retained proof, or return the recorded/manual-recovery state |
-| `note refresh-redemption` | No | exact Wallet B settlement evidence and final `REDEEMED` state |
+| `note refresh-redemption` | No | exact chosen-wallet settlement evidence and final `REDEEMED` state |
 
 The first demo implementation may use Python method calls rather than a public
 HTTP deployment. Keep service boundaries explicit so a later HTTPS transport

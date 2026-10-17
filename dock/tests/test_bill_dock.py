@@ -276,6 +276,11 @@ def test_receive_chunk_file_accepts_bearer_held_inventory(monkeypatch, tmp_path)
             assert uuid == bill_dock.ARTIFACT_META
             return metadata
 
+        async def write_gatt_char(self, uuid, value, response):
+            assert uuid == bill_dock.CMD
+            assert value == bill_dock.CHUNK_RECEIVE_COMMAND
+            assert response is True
+
     class FakeTransport:
         def __init__(self, client, chunk_in, chunk_out, timeout):
             assert isinstance(client, FakeClient)

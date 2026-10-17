@@ -26,9 +26,10 @@ Device name: `RgbBill`.
 This is the selected demo procedure. It deliberately separates online RGB
 funding/redemption from offline possession transfer.
 
-1. Dock A prepares a fresh disposable note wallet N and an immutable plan to
-   fund it with exactly 5 USDT. A human types the exact fresh confirmation.
-2. After N's receive is settled, Dock A creates and loads one bearer capsule
+1. An issuing dock prepares a fresh disposable note wallet N and an immutable
+   plan to fund it with exactly 5 USDT. It does not name a final wallet. A human
+   types the exact fresh confirmation.
+2. After N's receive is settled, that dock creates and loads one bearer capsule
    onto the starting bill. The capsule has kind `0x04` and contains no wallet
    mnemonic or datadir.
 3. With docks/network unavailable, an empty bill is pressed once near the
@@ -37,18 +38,43 @@ funding/redemption from offline possession transfer.
 4. At the destination dock, `bearer-held` inventory is extracted through
    `CHUNK_OUT`, persisted privately, and compared to the source SHA-256 before
    parsing. Interrupted extraction leaves the bill copy intact.
-5. Only after capsule validation does Wallet B create its fresh transport-free
-   invoice. The vault prepares an immutable redemption plan; another exact
-   one-use confirmation authorizes one RGB send from N.
-6. Wallet B imports the exact retained consignment and refreshes. The note is
+5. Only after capsule validation does the holder's chosen dock wallet create
+   its fresh transport-free invoice. The vault prepares an immutable redemption
+   plan bound to that previously unknown destination; another exact one-use
+   confirmation authorizes one RGB send from N.
+6. That wallet imports the exact retained consignment and refreshes. The note is
    terminal `REDEEMED` only when the exact txid has one `receive_witness`
    transfer with one 5,000,000-unit assignment and the recorded balance delta
    is fully settled.
+
+The browser maps these boundaries directly: ask local QVAC **“Prepare a $5
+note”** → if needed, review and exactly confirm the issuing dock's immutable
+Bitcoin fee-reserve top-up → after one confirmation ask **“Check my note”** →
+review and exactly confirm the separate RGB funding plan → issuing dock **Load
+note** → any dock **Pass note** (instruction only; the bills perform the offline
+hop) → holder-selected dock **Redeem note** → exact confirmation → **Recover**
+only if the durable journal requires it → **Refresh settlement**.
+QVAC emits only a typed intent. Deterministic policy creates the plan and never
+broadcasts or loads hardware from model output. A fresh note that lacks fee
+sats no longer asks the human to use a faucet: deterministic code prepares a
+separate `fund-note-bitcoin-reserve` plan that sends only the missing sats from
+the issuing dock wallet after exact confirmation. That confirmation cannot
+authorize the later RGB send. The separately confirmed Bitcoin capacity
+fallback stays in the operator runbook.
 
 The BLE hops are bearer-capability transfers, not RGB state transitions. A
 copied capsule is first-redemption-wins because the trusted vault controls N
 and permits only one claim. See
 [`OFFLINE-BEARER-RUNBOOK.md`](OFFLINE-BEARER-RUNBOOK.md).
+
+Bearer transfer is all-or-nothing: there is no partial amount or change at a
+tap. The receiver must be empty, promotes the complete validated capsule, and
+the sender deletes its ordinary copy only after the matching final ACK. A/B
+remain isolated configuration and registration profiles; they do not grant
+issue or redeem authority. Relay privacy and fixed denominations are design
+goals, while the trusted vault, observable BLE identities, funding evidence,
+and first-redemption race prevent claims of cryptographic anonymity or strict
+fungibility.
 
 ## Direct-mode fallback procedure
 
@@ -152,10 +178,13 @@ keeps `DENOMINATION=0`. It does not provision a bill, touch a wallet,
 construct or broadcast a transaction, or survive a restart. Other unknown
 command strings are rejected.
 
-Chunk transport adds two non-wallet commands. `diag:chunk:echo` arms a
+Chunk transport adds three non-wallet commands. `diag:chunk:echo` arms a
 one-shot, byte-exact echo of the next complete `CHUNK_IN` transfer through
-`CHUNK_OUT`. `chunk:discard` deletes the staged transport artifact. Neither
-command parses an RGB invoice, imports a consignment, calls a wallet, or
+`CHUNK_OUT`. `chunk:receive` is written only after the laptop enables
+`CHUNK_OUT` notifications; it explicitly requests a stored bill-to-dock or
+bearer-held artifact and avoids depending on a stale ESP32 CCCD cache after a
+reboot. `chunk:discard` deletes the staged transport artifact. None of these
+commands parses an RGB invoice, imports a consignment, calls a wallet, or
 broadcasts a transaction.
 
 Before a normal dock→bill transfer, the dock writes
@@ -274,9 +303,10 @@ sender for the next offline hop without either laptop or Internet access. The
 original sender keeps its file until the successful final ACK and only then
 deletes it. Invoice and consignment behavior stays unchanged.
 
-At the destination, a laptop that reads `bearer-held` may subscribe to dock
-`CHUNK_OUT` and request kind `0x04`. TapGatt exposes `/tap-out.ready` to
-DockGatt only after the laptop enables notifications. The bill retains the
+At the destination, a laptop that reads `bearer-held` subscribes to dock
+`CHUNK_OUT`, writes `chunk:receive`, and requests kind `0x04`. TapGatt exposes
+`/tap-out.ready` to DockGatt only after that explicit post-subscription
+request. The bill retains the
 capsule through the final dock ACK; only then is `/tap-out.ready` deleted and
 its sidecar reconciled to empty inventory. The dock must persist the received
 file privately and verify its full SHA-256 before parsing or planning
@@ -311,9 +341,23 @@ PRE_BROADCAST_REJECTED -> CAPACITY_PLANNED
  -> CAPACITY_BROADCAST_RECORDED -> CAPACITY_READY -> CLAIM_PLANNED
 ```
 
+Funding has the same separately authorized capacity fallback on the issuing
+dock wallet:
+
+```text
+PRE_BROADCAST_REJECTED -> FUNDING_CAPACITY_PLANNED
+ -> FUNDING_CAPACITY_BROADCAST_RECORDED -> FUNDING_CAPACITY_READY
+ -> AWAITING_FUNDING (fresh immutable RGB plan)
+```
+
+The original RGB confirmation is consumed before the failed send attempt and
+is never reused. The capacity transaction has its own exact confirmation. Only
+after it confirms may the dock archive the rejected RGB plan and prepare a new
+one.
+
 Firmware `bearer-held` means only that a complete capsule is durable. It does
 not mean the RGB allocation is unspent or settled. The vault is authoritative
-for claim state; Wallet B's exact settlement verifier is authoritative for
+for claim state; the chosen destination wallet's exact settlement verifier is authoritative for
 `REDEEMED`. A web or indexer timeout never grants permission to resend.
 
 Both current bill profiles sample the TTP223 output on GPIO12 as an active-high

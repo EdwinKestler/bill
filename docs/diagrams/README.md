@@ -3,7 +3,9 @@
 These diagrams are generated from the current design, GATT contract, and live
 evidence. The direct invoice/consignment flow remains the fallback; the primary
 views now show the accepted disposable-note funding, offline bearer relay, and
-Wallet B redemption completed on 2026-10-15.
+example Wallet B redemption completed on 2026-10-15. A/B identify that live
+evidence run; the current bearer contract permits either isolated dock profile
+to issue and any eventual holder's compatible dock wallet to redeem.
 
 | Diagram | Purpose | Source |
 | --- | --- | --- |

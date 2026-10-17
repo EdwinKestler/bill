@@ -71,18 +71,32 @@ def env(tmp_path: Path, **overrides: str) -> dict[str, str]:
         "RGB_DATA_DIR_A": str(tmp_path / "bill-a"),
         "RGB_DATA_DIR_B": str(tmp_path / "bill-b"),
         "RGB_OOB_CONSIGNMENT": "1",
-        "ELECTRUM_URL": "https://mutinynet.com/api",
+        "ELECTRUM_URL": "https://esplora.signet.kaleidoswap.com",
     }
     values.update(overrides)
     return values
 
 
 def test_settings_select_only_active_role_and_keep_peer_separate(tmp_path):
-    configured = RgbSettings.from_env(env(tmp_path, BILL_ROLE="B"))
+    configured = RgbSettings.from_env(
+        env(tmp_path, BILL_ROLE="B", RGB_WALLET_LABEL_B="Recipient wallet")
+    )
 
     assert configured.role is BillRole.B
     assert configured.data_dir == (tmp_path / "bill-b").resolve()
     assert configured.peer_data_dir == (tmp_path / "bill-a").resolve()
+    assert configured.wallet_label == "Recipient wallet"
+
+
+def test_settings_default_wallet_label_is_role_specific(tmp_path):
+    configured = RgbSettings.from_env(env(tmp_path, BILL_ROLE="A"))
+
+    assert configured.wallet_label == "Wallet A"
+
+
+def test_settings_reject_unsafe_wallet_label(tmp_path):
+    with pytest.raises(SettingsError, match="RGB_WALLET_LABEL_A"):
+        RgbSettings.from_env(env(tmp_path, RGB_WALLET_LABEL_A="unsafe\nlabel"))
 
 
 def test_settings_reject_overlapping_wallet_directories(tmp_path):
@@ -101,6 +115,14 @@ def test_settings_reject_non_mutinynet_indexer(tmp_path):
         RgbSettings.from_env(
             env(tmp_path, ELECTRUM_URL="ssl://blockstream.info:50002")
         )
+
+
+def test_settings_allow_public_mutinynet_esplora_fallback(tmp_path):
+    configured = RgbSettings.from_env(
+        env(tmp_path, ELECTRUM_URL="https://mutinynet.com/api")
+    )
+
+    assert configured.electrum_url == "https://mutinynet.com/api"
 
 
 def test_settings_require_role_scoped_credential_paths_for_live_open(tmp_path):

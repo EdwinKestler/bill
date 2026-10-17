@@ -3,14 +3,14 @@
 const steps = [
   {
     source: "5 USDT",
-    sourceLabel: "WALLET A",
+    sourceLabel: "ISSUING WALLET",
     channel: "RGB FUNDING",
     destinationLabel: "NOTE WALLET N",
     destination: "ACTIVE",
     tag: "THE FIRST REAL RGB TRANSITION",
     title: "Create one disposable funded note.",
     description:
-      "Wallet A sends exactly 5 USDT to an isolated one-use rgb-lib wallet. After Mutinynet confirms the transfer, the note wallet holds the allocation that backs the bearer capability.",
+      "The issuing wallet sends exactly 5 USDT to an isolated one-use rgb-lib wallet. After Mutinynet confirms the transfer, the note wallet holds the allocation that backs the bearer capability; no final wallet is named.",
     detail: "Funding tx · b325cbe4…3963 · 5,000,000 units",
   },
   {
@@ -41,12 +41,12 @@ const steps = [
     source: "CAPSULE",
     sourceLabel: "BILL B",
     channel: "GATT DOCK",
-    destinationLabel: "WALLET B",
+    destinationLabel: "CHOSEN WALLET",
     destination: "INVOICE",
     tag: "THE FINAL WALLET IS CHOSEN NOW",
     title: "Extract exact bytes before planning.",
     description:
-      "The destination dock extracts the capsule, verifies its length and SHA-256, then asks Wallet B for a fresh transport-free invoice. The payer did not need to know Wallet B during the offline handoff.",
+      "The destination dock extracts the capsule, verifies its length and SHA-256, then asks the holder's chosen wallet for a fresh transport-free invoice. The issuer did not know that wallet during funding or offline relay.",
     detail: "Exact extraction · transport_endpoints = []",
   },
   {
@@ -65,12 +65,12 @@ const steps = [
     source: "RGB PROOF",
     sourceLabel: "NOTE WALLET N",
     channel: "OOB IMPORT",
-    destinationLabel: "WALLET B",
+    destinationLabel: "CHOSEN WALLET",
     destination: "REDEEMED",
     tag: "INDEPENDENT RGB VALIDATION",
     title: "Import the proof and settle.",
     description:
-      "Wallet B imports the exact rgb-lib consignment and refreshes against Mutinynet. The note is durably marked REDEEMED and replay recovery returns the recorded result without reopening or broadcasting again.",
+      "The chosen wallet imports the exact rgb-lib consignment and refreshes against Mutinynet. The note is durably marked REDEEMED and replay recovery returns the recorded result without reopening or broadcasting again.",
     detail: "15,057-byte consignment · Wallet B 50 → 55 USDT",
   },
 ];
@@ -133,7 +133,7 @@ document
 
 const descriptions = {
   "01-system-architecture":
-    "System architecture — Wallet A funds a trusted one-use note vault, bills relay its capability offline, and Wallet B redeems later.",
+    "System architecture — an issuing wallet funds a trusted one-use note vault, bills relay its capability offline, and a previously unknown wallet redeems later.",
   "02-component-ownership":
     "Component ownership — the actual firmware, BLE dock, note-vault, web, and documentation boundaries.",
   "03-rgb-transfer-sequence":

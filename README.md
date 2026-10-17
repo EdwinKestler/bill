@@ -91,6 +91,12 @@ The two actual RGB transitions are Wallet A → note wallet N and note wallet N
 Mutinynet trusted-custody prototype with first-redemption-wins copy risk—not a
 production bearer instrument or an offline double-spend solution.
 
+Wallet A and Wallet B are the accepted reference run, not permanent sender and
+recipient roles. In the current bearer protocol either isolated dock wallet may
+issue a note it funds, every tap moves the note's complete value, and the
+eventual holder may redeem at any compatible dock wallet. The final wallet is
+bound only in the separately confirmed redemption plan.
+
 This folder is a **git project** nested under the Agentic Dollars workspace
 (`rgbhackathon/ideas/bill`). Lookup uses that workspace’s Palimnex — **not** a
 second silo. See [docs/LOOKUP.md](docs/LOOKUP.md).
@@ -181,12 +187,20 @@ before BLE staging, and retains exact artifacts for stage/import-only recovery.
 Both role servers pass live startup, LAN/localhost binding, balance refresh,
 and browser-driven physical transfer acceptance checks.
 
-The newer offline bearer path is currently an accepted operator CLI and
-firmware workflow, not yet a public web endpoint. Its funding txid is
+The newer offline bearer path is accepted at the operator CLI and firmware
+layers, and is now integrated into the local web docks as explicit **Load**,
+**Pass**, **Redeem**, **Recover**, and **Refresh settlement** actions. The web
+implementation preserves the same exact confirmation and no-resend recovery
+boundaries; physical browser acceptance of this new UI path is still pending.
+Its funding txid is
 `b325cbe40c282e661c40ff8555cb6cb0fc9867a32855feb8b17d7756c9a83963`;
 its redemption txid is
 `dfe138b0983f6238103d2e5c57bf0848fdd5b7fd733162299fb4c6e5e9f427bf`.
 At the recorded settlement check the redemption had 11 confirmations and
-Wallet B showed 55,000,000 settled/future/spendable units. Local QVAC model
-execution is verified but typed-intent integration and evaluation remain open.
-WDK is not integrated.
+Wallet B showed 55,000,000 settled/future/spendable units. Local QVAC now maps
+the primary “Prepare a $5 note” request into the guarded bearer-funding plan;
+the deterministic dock now replaces manual note-faucet funding with a separate
+immutable Bitcoin top-up from the issuing wallet, while retaining distinct
+exact confirmations for the BTC and RGB broadcasts, settlement proof, and
+hardware-load gates. Full live-browser acceptance and the fixed adversarial
+intent evaluation remain open. WDK is not integrated.

@@ -15,12 +15,30 @@ const deviceSummary = document.getElementById("device-summary");
 const deviceMessage = document.getElementById("device-message");
 const sendUsdt = document.getElementById("send-usdt");
 const receiveUsdt = document.getElementById("receive-usdt");
+const loadNote = document.getElementById("load-note");
+const passNote = document.getElementById("pass-note");
+const redeemNote = document.getElementById("redeem-note");
+const recoverNote = document.getElementById("recover-note");
+const refreshNote = document.getElementById("refresh-note");
+const workflowStep = document.getElementById("workflow-step");
 const workflowMessage = document.getElementById("workflow-message");
+const qvacForm = document.getElementById("qvac-form");
+const qvacText = document.getElementById("qvac-text");
+const qvacSend = document.getElementById("qvac-send");
+const qvacStatus = document.getElementById("qvac-status");
 const confirmTitle = document.getElementById("confirm-title");
 const confirmError = document.getElementById("confirm-error");
 const recoveryEl = document.getElementById("recovery");
 const recoveryNote = document.getElementById("recovery-note");
 const retryStage = document.getElementById("retry-stage");
+const walletHeading = document.getElementById("wallet-heading");
+const walletNetwork = document.getElementById("wallet-network");
+const walletRole = document.getElementById("wallet-role");
+const walletFingerprint = document.getElementById("wallet-fingerprint");
+const walletAsset = document.getElementById("wallet-asset");
+const walletPurpose = document.getElementById("wallet-purpose");
+const walletTarget = document.getElementById("wallet-target");
+const walletConfiguration = document.getElementById("wallet-configuration");
 
 let pendingId = null;
 let selectedDevice = null;
@@ -47,26 +65,78 @@ async function refresh() {
     document.getElementById("meta").textContent =
       "role " + bill.role + " · " + bill.identity + " · " + bill.mode;
     renderDevice(bill.device);
+    renderWallet(bill.wallet);
     renderRecovery(bill);
+    const bearer = bill.bearer;
+    workflowStep.textContent = bearer
+      ? "Step " + bearer.step + " · " + (bearer.offline ? "offline" : "online")
+      : "Ready · inspect card";
     activeRole = bill.role;
     const recoveryActive = Boolean(bill.recovery);
+    const registered = Boolean(bill.device && bill.device.registered);
     sendUsdt.disabled =
       busy ||
       recoveryActive ||
       bill.role !== "A" ||
-      !(bill.device && bill.device.registered);
+      !registered;
     receiveUsdt.disabled =
       busy ||
       recoveryActive ||
       bill.role !== "B" ||
-      !(bill.device && bill.device.registered);
+      !registered;
+    loadNote.disabled = busy || recoveryActive || !registered;
+    passNote.disabled = busy || !registered;
+    redeemNote.disabled = busy || recoveryActive || !registered;
+    recoverNote.disabled =
+      busy || !bill.bearer || !registered;
+    refreshNote.disabled =
+      busy || !bill.bearer || !registered;
+    qvacSend.disabled = busy;
     document.getElementById("workflow-help").textContent =
-      bill.role === "A"
-        ? "Send USDT checks for an invoice on Bill A before reading it."
-        : "Receive USDT stages an invoice when empty, or imports a received consignment.";
+      "An empty card may load this wallet's already-funded note. A held note may " +
+      "pass its whole value offline or redeem into this dock wallet after exact confirmation.";
+    if (!bill.pending && dialog.open && pendingId) {
+      pendingId = null;
+      confirmationPhrase.value = "";
+      confirmError.textContent = "";
+      dialog.close();
+    }
+    if (bill.pending && bill.pending.id !== pendingId && !dialog.open) {
+      showConfirm(bill.pending);
+    }
   } catch (error) {
     document.getElementById("status").textContent = "reconnecting…";
   }
+}
+
+function shortenedAsset(assetId) {
+  if (!assetId || assetId.length <= 28) return assetId || "Not configured";
+  return assetId.slice(0, 16) + "…" + assetId.slice(-10);
+}
+
+function renderWallet(wallet) {
+  if (!wallet) {
+    walletHeading.textContent = "Wallet identity unavailable";
+    walletNetwork.textContent = "Unavailable";
+    walletRole.textContent = "—";
+    walletFingerprint.textContent = "—";
+    walletAsset.textContent = "—";
+    walletPurpose.textContent = "—";
+    walletTarget.textContent = "—";
+    walletConfiguration.textContent =
+      "The dock has not published a safe wallet identity.";
+    return;
+  }
+  walletHeading.textContent = wallet.label;
+  walletNetwork.textContent = wallet.network;
+  walletRole.textContent = "Wallet " + wallet.role;
+  walletFingerprint.textContent = wallet.master_fingerprint || "Not configured";
+  walletAsset.textContent = shortenedAsset(wallet.asset_id);
+  walletAsset.title = wallet.asset_id || "";
+  walletPurpose.textContent = wallet.purpose;
+  walletTarget.textContent = wallet.bearer_target;
+  walletConfiguration.textContent =
+    "Configured by " + wallet.profile_setting + ". Restart required to switch.";
 }
 
 const RECOVERY_ACTIONS = {
@@ -87,6 +157,26 @@ const RECOVERY_ACTIONS = {
     note: "The last send outcome is unknown. Inspect the wallet before starting a new transfer.",
     endpoint: null,
   },
+  "retry-bearer-load": {
+    note: "The funded capsule remains in the vault. Retry only loading that exact capsule onto the empty bill.",
+    endpoint: "/api/bearer/load",
+  },
+  "retry-bearer-plan": {
+    note: "The capsule was extracted and retained. Retry verification and plan creation; do not load or fund another note.",
+    endpoint: "/api/bearer/redeem",
+  },
+  "recover-bearer-redemption": {
+    note: "The confirmation was consumed. Recover only the recorded consignment import; never resend.",
+    endpoint: "/api/bearer/recover",
+  },
+  "manual-bearer-reconciliation": {
+    note: "The send outcome is ambiguous. Do not confirm again or create another redemption plan.",
+    endpoint: null,
+  },
+  "inspect-note-funding": {
+    note: "The note-funding record needs inspection. Ask QVAC ‘check my note’; never create or confirm a second funding send.",
+    endpoint: null,
+  },
 };
 
 function renderRecovery(bill) {
@@ -105,6 +195,13 @@ function renderRecovery(bill) {
   retryTarget = spec.endpoint
     ? { endpoint: spec.endpoint, body: spec.body || {} }
     : null;
+  retryStage.textContent = action.startsWith("retry-bearer-plan")
+    ? "Retry plan"
+    : action.startsWith("recover-bearer")
+      ? "Recover import"
+      : action.startsWith("retry-bearer-load")
+        ? "Retry load"
+        : "Retry BLE step";
   retryStage.hidden = !retryTarget;
   retryStage.disabled = busy || !retryTarget;
   recoveryEl.hidden = false;
@@ -293,8 +390,68 @@ async function runWorkflow(path) {
   }
 }
 
+async function runBearer(path) {
+  if (busy) return;
+  busy = true;
+  workflowMessage.textContent = "Reading the registered bill inventory first…";
+  try {
+    const response = await fetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    const data = await response.json();
+    const message = data.reply || data.error || "Bearer step completed.";
+    workflowMessage.textContent = message;
+    line("bot", message);
+    if (data.pending) showConfirm(data.pending);
+  } catch (error) {
+    workflowMessage.textContent = error.message;
+  } finally {
+    busy = false;
+    await refresh();
+  }
+}
+
 sendUsdt.addEventListener("click", () => runWorkflow("/api/workflow/send"));
 receiveUsdt.addEventListener("click", () => runWorkflow("/api/workflow/receive"));
+loadNote.addEventListener("click", () => runBearer("/api/bearer/load"));
+passNote.addEventListener("click", () => runBearer("/api/bearer/pass"));
+redeemNote.addEventListener("click", () => runBearer("/api/bearer/redeem"));
+recoverNote.addEventListener("click", () => runBearer("/api/bearer/recover"));
+refreshNote.addEventListener("click", () => runBearer("/api/bearer/refresh"));
+
+qvacForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const value = qvacText.value.trim();
+  if (!value || busy) return;
+  busy = true;
+  qvacSend.disabled = true;
+  qvacStatus.textContent = "QVAC is classifying locally…";
+  line("you", value);
+  try {
+    const response = await fetch("/api/qvac", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: value }),
+    });
+    const data = await response.json();
+    const message = data.reply || data.error || "QVAC request completed.";
+    qvacStatus.textContent = data.qvac
+      ? "Local " + data.qvac.model + " → " + data.qvac.intent +
+        " · " + data.qvac.latency_ms + " ms"
+      : message;
+    workflowMessage.textContent = message;
+    line("bot", message);
+    if (data.pending) showConfirm(data.pending);
+  } catch (error) {
+    qvacStatus.textContent = error.message;
+    workflowMessage.textContent = error.message;
+  } finally {
+    busy = false;
+    await refresh();
+  }
+});
 
 retryStage.addEventListener("click", async () => {
   if (!retryTarget || busy) return;
@@ -345,16 +502,54 @@ function showConfirm(pending) {
   confirmError.textContent = "";
   confirmNote.textContent =
     pending.note + " Type exactly: " + pending.confirmation_phrase;
-  confirmPlan.textContent = [
-    "amount: $" + (pending.cents / 100).toFixed(2) + " USDT",
-    "base units: " + pending.amount_base_units,
-    "balance before: $" +
-      (pending.balance_before_cents / 100).toFixed(2),
-    "recipient: " + pending.recipient_id,
-    "fee: " + pending.fee_rate_sat_vb + " sat/vB",
-    "invoice sha256: " + pending.invoice_sha256,
-    "transport endpoints: []",
-  ].join("\n");
+  const capacity = pending.action === "bearer-funding-capacity";
+  const btcTopup = pending.action === "bearer-note-btc-topup";
+  const planLines = btcTopup
+    ? [
+        "operation: fund disposable note Bitcoin reserve",
+        "amount: " + pending.topup_amount_sat + " sats",
+        "note reserve before: " +
+          pending.note_vanilla_spendable_before +
+          " sats",
+        "note reserve target: " + pending.target_note_vanilla_sat + " sats",
+        "issuing wallet balance before: " +
+          pending.source_vanilla_spendable_before +
+          " sats",
+        "destination: " + pending.destination_address,
+        "fee: " + pending.fee_rate_sat_vb + " sat/vB",
+        "$5 RGB note funding: not performed by this confirmation",
+      ]
+    : capacity
+    ? [
+        "operation: create RGB source-wallet capacity",
+        "outputs: " + pending.utxo_count,
+        "output size: " + pending.utxo_size_sat + " sats",
+        "vanilla balance before: " + pending.vanilla_spendable_before + " sats",
+        "free colorable UTXOs before: " +
+          pending.free_colorable_utxo_count_before,
+        "fee: " + pending.fee_rate_sat_vb + " sat/vB",
+        "RGB note funding: not performed by this confirmation",
+      ]
+    : [
+        "amount: $" + (pending.cents / 100).toFixed(2) + " USDT",
+        "base units: " + pending.amount_base_units,
+        "recipient: " + pending.recipient_id,
+        "fee: " + pending.fee_rate_sat_vb + " sat/vB",
+        "invoice sha256: " + pending.invoice_sha256,
+        "transport endpoints: []",
+      ];
+  if (!capacity && !btcTopup && pending.balance_before_cents !== undefined) {
+    planLines.splice(
+      2,
+      0,
+      "balance before: $" +
+        (pending.balance_before_cents / 100).toFixed(2),
+    );
+  }
+  if (!capacity && !btcTopup && pending.capsule_sha256) {
+    planLines.splice(2, 0, "capsule sha256: " + pending.capsule_sha256);
+  }
+  confirmPlan.textContent = planLines.join("\n");
   confirmationPhrase.value = "";
   confirmationPhrase.placeholder = pending.confirmation_phrase;
   dialog.showModal();
@@ -406,8 +601,16 @@ confirmForm.addEventListener("submit", async (event) => {
     confirmError.textContent = "";
     line(
       "bot",
-      data.ok && data.completed
-        ? "Broadcast complete and exact consignment staged over BLE."
+      data.ok && data.completed && data.receipt && data.receipt.action === "bearer-redemption"
+        ? "Bearer redemption broadcast once and the exact consignment was imported into this dock wallet."
+        : data.ok && data.completed && data.receipt && data.receipt.action === "bearer-funding"
+          ? "The disposable note was funded once. After one confirmation, click Load note."
+        : data.ok && data.completed && data.receipt && data.receipt.action === "bearer-funding-capacity"
+          ? "Source-wallet capacity was created once. After one confirmation, ask QVAC ‘check my note’."
+        : data.ok && data.completed && data.receipt && data.receipt.action === "bearer-note-btc-topup"
+          ? "The dock funded the note’s Bitcoin reserve once. After one confirmation, ask QVAC ‘check my note’."
+        : data.ok && data.completed
+          ? "Broadcast complete and exact consignment staged over BLE."
         : data.ok && data.recovery_required
           ? "Broadcast complete. Consignment retained; use retry stage only."
           : data.error,
@@ -423,12 +626,18 @@ dialog.addEventListener("close", async () => {
     confirmError.textContent = "";
     confirmationPhrase.value = "";
     if (cancelledId) {
-      await fetch("/api/cancel", {
+      const response = await fetch("/api/cancel", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: cancelledId }),
       });
-      line("bot", "Transfer plan cancelled. Nothing was broadcast.");
+      const data = await response.json();
+      line(
+        "bot",
+        data.ok
+          ? "Transfer plan cancelled. Nothing was broadcast."
+          : data.error || "The durable plan was not cancelled.",
+      );
       await refresh();
     }
   }

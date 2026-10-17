@@ -4,9 +4,11 @@ Rendered architecture, sequence, state, protocol, hardware, and trust diagrams
 are indexed in [docs/diagrams/README.md](diagrams/README.md). Their editable
 Mermaid sources live beside the PNGs under `docs/diagrams/src/`.
 
-Physical USDT notes. The dock exposes two explicit human actions: **Send
-USDT** and **Receive USDT**. Tap two bills once when instructed. No QR, no
-phone app, and no guessing whether the bill should be read or written.
+Physical USDT notes. The primary dock exposes explicit **Load note**, **Pass
+note**, **Redeem note**, **Recover**, and **Refresh settlement** actions. Tap
+two bills once when instructed. No QR, no phone app, and no guessing whether
+the bill should be read or written. The older **Send USDT** / **Receive USDT**
+invoice-first procedure remains an advanced fallback.
 
 ## Roles
 
@@ -19,9 +21,11 @@ phone app, and no guessing whether the bill should be read or written.
 | GATT-dock | laptop ↔ its bill | On-demand connection. Inventory, commands, status, denomination, opaque chunks |
 | GATT-tap | bill ↔ bill | A press edge arms a bounded receiver window; high RSSI gates the peer. Carries invoice, consignment, or an opaque bearer capsule |
 
-The ESP32 bills are not rgb-lib wallets. Wallet A and Wallet B each have their
-own mnemonic/datadir on their role-scoped docks. The selected offline mode adds
-one disposable note wallet N per note inside the trusted local vault. The bill
+The ESP32 bills are not rgb-lib wallets. Each dock profile has its own
+mnemonic/datadir and registered bill. A/B are isolation and demo labels, not
+bearer permissions: either dock wallet may fund a new note, and whichever dock
+the eventual holder chooses may redeem it. The selected offline mode adds one
+disposable note wallet N per note inside the trusted local vault. The bill
 carries only an opaque bearer capsule; it never receives N's mnemonic or
 datadir. Never open any datadir in two processes.
 
@@ -36,22 +40,38 @@ device selection, not cryptographic device ownership authentication.
 
 ## Primary RGB mapping: offline bearer note
 
-1. Wallet A funds fresh isolated note wallet N with exactly 5 USDT through a
-   transport-free witness invoice and one exact confirmation.
-2. After N settles, the vault creates a 603-byte bearer capsule containing a
+1. The issuing dock creates fresh isolated note wallet N. If N lacks its
+   2,000-sat Bitcoin fee reserve, the dock prepares a separate immutable
+   `send_btc` top-up from the issuer wallet; one exact confirmation authorizes
+   that transaction, replacing the manual faucet step.
+2. After the top-up confirms, the dock supersedes the stale RGB plan. A fresh
+   exact confirmation funds N with exactly 5 USDT through a transport-free
+   witness invoice.
+3. After N settles, the vault creates a 603-byte bearer capsule containing a
    random claim capability and redacted funding evidence—never wallet keys.
-3. Dock A loads the capsule onto a bill. Bills relay the same kind `0x04`
+4. The issuing dock loads the capsule onto a bill. Bills relay the same kind `0x04`
    artifact over BLE while docks and Internet are unavailable.
-4. The final dock extracts and hashes the exact capsule. Only then does Wallet
-   B create its fresh transport-free redemption invoice.
-5. One separate exact confirmation authorizes N's one RGB send. Wallet B
+5. The final holder chooses a compatible dock. It extracts and hashes the exact
+   capsule, and only then does that dock's local wallet create a fresh
+   transport-free redemption invoice. The issuer did not know this wallet.
+6. One separate exact confirmation authorizes N's one RGB send. The chosen wallet
    imports the exact retained consignment and becomes `REDEEMED` only after an
    exact txid/assignment/balance settlement check.
 
-There are exactly two RGB transitions: Wallet A → N and N → Wallet B. The
-offline bill-to-bill hops move the bearer capability but do not alter RGB
-state. The vault retains N's keys, so this is trusted custody and copied
-capsules are first-redemption-wins.
+There are exactly two RGB transitions: issuer wallet → N and N → eventual
+redeemer wallet. Every offline bill-to-bill hop transfers the complete fixed
+denomination and does not alter RGB state. The empty receiver durably accepts
+the capsule before the sender clears its ordinary copy on the final ACK. The
+vault retains N's keys, so this is trusted custody and copied capsules are
+first-redemption-wins.
+
+This prototype targets cash-like relay privacy and denomination
+interchangeability, not proven cryptographic anonymity or strict fungibility.
+No final wallet or person identity is embedded when the note is issued, and BLE
+advertisements expose no artifact metadata. However, device addresses are
+locally observable, the capsule carries funding evidence, and the trusted vault
+can correlate issuance with first redemption. Those limits must be stated in
+the demo.
 
 ## Direct-mode fallback
 
@@ -89,9 +109,11 @@ On-chain rgb-lib, not RLN. Lightning is a channel, not a note.
   deletes only after the successful final ACK. Firmware emits v3 while keeping
   inventory/tap metadata v1/v2 decode compatibility.
 - A destination dock may subscribe to dock `CHUNK_OUT` while inventory is
-  `bearer-held` to extract that same capsule for redemption. The bill keeps the
-  file through the final dock ACK, then clears the bearer file and sidecar.
-  Merely connecting or reading inventory never consumes the note.
+  `bearer-held`, then issue the explicit `chunk:receive` request to extract
+  that same capsule for redemption. This post-subscription handshake avoids a
+  stale ESP32 CCCD cache after reboot. The bill keeps the file through the
+  final dock ACK, then clears the bearer file and sidecar. Merely connecting or
+  reading inventory never consumes the note.
 - GATT-tap: the bill holding the staged artifact stays **peripheral/sender**;
   one debounced tap on the empty bill arms a 15-second **central/receiver**
   window. The operator may release immediately. The receiver connects only if
@@ -175,10 +197,19 @@ acceptance gates are in
    extraction, separately gated capacity, one-shot redemption, Wallet B
    settlement, and durable `REDEEMED` closure.
 8. Integrate the accepted operator bearer flow into the web dock without
-   weakening confirmation/recovery boundaries. **Not yet implemented.**
+   weakening confirmation/recovery boundaries. **Implemented and locally
+   tested; physical browser acceptance is still required.** The web process
+   remains the sole owner of Wallet A/B, extraction is private and
+   content-addressed, and confirmation/recovery reuse the accepted durable
+   note-vault plan and journal.
 9. Connect local QVAC typed intent parsing to the accepted deterministic
-   actions and capture a reproducible evaluation. **Not yet implemented and
-   required for the final submission.**
+   actions and capture a reproducible evaluation. **Integrated locally:** the
+   resident `QWEN3_600M_INST_Q4` model maps natural language to the frozen
+   intent grammar, while deterministic policy prepares the no-broadcast
+   funding plan and preserves exact confirmation. Real local checks mapped
+   “Prepare a $5 note” to `LOAD_NOTE(500)` and “Check my note status” to
+   `INSPECT_NOTE`; full browser/live-wallet acceptance and the fixed adversarial
+   evaluation corpus remain pending.
 10. Rehearse one non-technical three-minute live flow with understandable
    device/dock states and recovery messages. Add WDK only after the RGB + QVAC
    primary flow is stable; WDK is bonus, not a blocker.
@@ -215,6 +246,7 @@ distribution obligations before copying source.
 ## Judging
 
 Real RGB is proven by the two accepted Mutinynet transitions. QVAC stays on the
-dock and remains an open integration gate. WDK is not integrated. The selected
+dock and is now wired to the guarded note-preparation path; full live-browser
+acceptance and the reproducible adversarial evaluation remain open. WDK is not integrated. The selected
 bearer-note demo is explicitly trusted-vault custody; do not describe it as a
 production self-custodial note.

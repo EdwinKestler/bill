@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -11,18 +12,26 @@ from web.rgb.config import BillRole, RgbSettings
 from web.rgb.note_live import (
     LIVE_NOTE_VERSION,
     LiveFundingPlan,
+    LiveCapacityPlan,
     LiveNoteConfirmationRequired,
     LiveNoteError,
     LiveNotePaths,
     LiveRedemptionPlan,
     _atomic_json,
     _note_settings,
+    _validate_destination,
+    _validate_sender,
     _write_private,
+    abandon_live_unbroadcast_note,
+    execute_live_funding_capacity_plan,
+    execute_live_funding_btc_topup_plan,
     execute_live_redemption_plan,
     execute_live_redemption_capacity_plan,
     execute_live_funding_plan,
     load_funding_plan,
     prepare_live_bearer_capsule,
+    prepare_live_funding_capacity_plan,
+    prepare_live_funding_btc_topup_plan,
     prepare_live_redemption_plan,
     prepare_live_redemption_capacity_plan,
     prepare_live_redemption_after_capacity,
@@ -32,7 +41,10 @@ from web.rgb.note_live import (
     refresh_live_redemption_capacity,
     redacted_plan,
     refresh_live_funding,
+    refresh_live_funding_btc_topup,
+    refresh_live_funding_capacity,
     resume_live_funding_plan,
+    renew_live_funding_plan,
     renew_live_redemption_plan,
 )
 
@@ -115,6 +127,156 @@ def test_note_settings_isolate_note_wallet_from_sender(tmp_path):
     assert settings.electrum_url == "https://mutinynet.com/api"
 
 
+def test_issuing_dock_funds_note_btc_reserve_with_separate_confirmation(tmp_path):
+    sender = _sender(tmp_path)
+    paths = LiveNotePaths.create(tmp_path / ".note-vault", "note-1")
+    funding = redacted_plan(_plan())
+    _atomic_json(paths.plan_file, funding)
+    _atomic_json(
+        paths.manifest_file,
+        {
+            "version": LIVE_NOTE_VERSION,
+            "network": "mutinynet",
+            "note_id": "note-1",
+            "state": "AWAITING_FUNDING",
+            "master_fingerprint": "note-fingerprint",
+        },
+    )
+
+    tx = SimpleNamespace(
+        txid="a" * 64,
+        confirmation_time=None,
+    )
+
+    class SourceWallet:
+        def __init__(self):
+            self.sent = 0
+
+        def get_btc_balance(self, *_args):
+            return SimpleNamespace(
+                vanilla=SimpleNamespace(spendable=10_000),
+                colored=SimpleNamespace(spendable=1_000),
+            )
+
+        def list_unspents(self, *_args):
+            return []
+
+        def send_btc(self, _online, address, amount, fee_rate, skip_sync):
+            assert (address, amount, fee_rate, skip_sync) == (
+                "tb1ptest",
+                2_000,
+                2,
+                False,
+            )
+            assert json.loads(paths.funding_btc_topup_plan_file.read_text())[
+                "status"
+            ] == "CONFIRMATION_CONSUMED"
+            self.sent += 1
+            return tx.txid
+
+        def list_transactions(self, *_args):
+            return [tx] if self.sent else []
+
+    class Backend:
+        def __init__(self, wallet):
+            self._wallet = wallet
+            self._online = object()
+
+        def refresh(self):
+            return {}
+
+        def close(self):
+            pass
+
+    source = Backend(SourceWallet())
+    plan, manifest = prepare_live_funding_btc_topup_plan(
+        sender,
+        vault_root=paths.root,
+        note_id="note-1",
+        clock=lambda: 1_100,
+        id_factory=lambda: "topup-plan-1",
+        sender_backend_opener=lambda _settings: source,
+    )
+    assert plan.topup_amount_sat == 2_000
+    assert manifest["state"] == "BTC_TOPUP_PLANNED"
+
+    with pytest.raises(LiveNoteConfirmationRequired):
+        execute_live_funding_btc_topup_plan(
+            sender,
+            vault_root=paths.root,
+            note_id="note-1",
+            plan_id=plan.plan_id,
+            confirmation_phrase="yes",
+            clock=lambda: 1_200,
+            sender_backend_opener=lambda _settings: source,
+        )
+    assert source._wallet.sent == 0
+
+    result = execute_live_funding_btc_topup_plan(
+        sender,
+        vault_root=paths.root,
+        note_id="note-1",
+        plan_id=plan.plan_id,
+        confirmation_phrase=plan.confirmation_phrase,
+        clock=lambda: 1_200,
+        sender_backend_opener=lambda _settings: source,
+    )
+    assert result["txid"] == "a" * 64
+    assert source._wallet.sent == 1
+    with pytest.raises(LiveNoteConfirmationRequired):
+        execute_live_funding_btc_topup_plan(
+            sender,
+            vault_root=paths.root,
+            note_id="note-1",
+            plan_id=plan.plan_id,
+            confirmation_phrase=plan.confirmation_phrase,
+            clock=lambda: 1_225,
+            sender_backend_opener=lambda _settings: source,
+        )
+    assert source._wallet.sent == 1
+
+    class NoteWallet:
+        def get_btc_balance(self, *_args):
+            return SimpleNamespace(
+                vanilla=SimpleNamespace(spendable=2_000),
+                colored=SimpleNamespace(spendable=0),
+            )
+
+        def list_unspents(self, *_args):
+            return []
+
+    note = Backend(NoteWallet())
+    waiting = refresh_live_funding_btc_topup(
+        sender,
+        vault_root=paths.root,
+        note_id="note-1",
+        clock=lambda: 1_250,
+        sender_backend_opener=lambda _settings: source,
+        note_backend_opener=lambda _settings: note,
+    )
+    assert waiting["confirmed"] is False
+
+    tx.confirmation_time = SimpleNamespace(height=123, timestamp=1_300)
+    confirmed = refresh_live_funding_btc_topup(
+        sender,
+        vault_root=paths.root,
+        note_id="note-1",
+        clock=lambda: 1_350,
+        sender_backend_opener=lambda _settings: source,
+        note_backend_opener=lambda _settings: note,
+    )
+    assert confirmed["confirmed"] is True
+    assert confirmed["note_vanilla_spendable_sat"] == 2_000
+    assert json.loads(paths.manifest_file.read_text())["state"] == (
+        "AWAITING_FUNDING"
+    )
+
+
+def test_either_dock_profile_may_issue_or_redeem(tmp_path):
+    _validate_sender(_destination(tmp_path))
+    _validate_destination(_sender(tmp_path))
+
+
 def test_private_and_atomic_records_are_mode_0600(tmp_path):
     private = tmp_path / "secret" / "mnemonic"
     record = tmp_path / "plans" / "funding.json"
@@ -125,6 +287,49 @@ def test_private_and_atomic_records_are_mode_0600(tmp_path):
     assert record.stat().st_mode & 0o777 == 0o600
     with pytest.raises(FileExistsError):
         _write_private(private, b"overwrite")
+
+
+def test_failed_unbroadcast_note_can_be_archived_but_funded_note_cannot(tmp_path):
+    sender = _sender(tmp_path)
+    paths = LiveNotePaths.create(tmp_path / ".note-vault", "note-failed")
+    _atomic_json(
+        paths.manifest_file,
+        {
+            "version": LIVE_NOTE_VERSION,
+            "network": "mutinynet",
+            "note_id": "note-failed",
+            "state": "PREPARATION_RECOVERY_REQUIRED",
+            "issuer_master_fingerprint": sender.master_fingerprint,
+        },
+    )
+
+    result = abandon_live_unbroadcast_note(
+        sender,
+        vault_root=paths.root,
+        note_id="note-failed",
+        clock=lambda: 1_234,
+    )
+
+    assert result == {
+        "phase": "live-note-abandoned",
+        "note_id": "note-failed",
+        "state": "ABANDONED",
+        "abandoned_at": 1_234,
+        "broadcast": False,
+        "preserved": True,
+    }
+    manifest = json.loads(paths.manifest_file.read_text())
+    assert manifest["state"] == "ABANDONED"
+    assert manifest["broadcast"] is False
+
+    manifest["state"] = "ACTIVE"
+    _atomic_json(paths.manifest_file, manifest)
+    with pytest.raises(LiveNoteError, match="never-planned"):
+        abandon_live_unbroadcast_note(
+            sender,
+            vault_root=paths.root,
+            note_id="note-failed",
+        )
 
 
 def test_load_plan_rejects_wrong_network(tmp_path):
@@ -189,6 +394,458 @@ def test_live_confirmation_mismatch_cannot_open_or_consume_wallet(tmp_path):
             note_backend_opener=unexpected_open,
         )
     assert json.loads(paths.plan_file.read_text())["status"] == "PLANNED"
+
+
+def test_funding_allocation_rejection_is_recorded_as_prebroadcast(tmp_path):
+    sender = _sender(tmp_path)
+    paths = LiveNotePaths.create(tmp_path / ".note-vault", "note-1")
+    invoice = "rgb-invoice"
+    plan = redacted_plan(_plan())
+    plan.update(
+        {
+            "recipient_invoice_sha256": hashlib.sha256(invoice.encode()).hexdigest(),
+            "note_vanilla_spendable_before": 2_000,
+        }
+    )
+    _atomic_json(paths.plan_file, plan)
+    _atomic_json(
+        paths.manifest_file,
+        {
+            "version": LIVE_NOTE_VERSION,
+            "network": "mutinynet",
+            "note_id": "note-1",
+            "state": "AWAITING_FUNDING",
+        },
+    )
+    _write_private(paths.invoice_file, invoice.encode())
+    parsed = SimpleNamespace(
+        recipient_id="recipient",
+        asset_id="rgb:usdt",
+        transport_endpoints=(),
+        unknown_query_params={},
+    )
+
+    class InsufficientAllocationSlots(Exception):
+        pass
+
+    class Backend:
+        def parse_invoice(self, _invoice):
+            return parsed
+
+        def spendable_balance(self, _asset):
+            return 50_000_000
+
+        def send_donation(self, **_kwargs):
+            raise InsufficientAllocationSlots()
+
+        def close(self):
+            pass
+
+    with pytest.raises(LiveNoteError, match="free RGB allocation slot"):
+        execute_live_funding_plan(
+            sender,
+            vault_root=paths.root,
+            note_id="note-1",
+            plan_id="plan-1",
+            confirmation_phrase="CONFIRM plan-1",
+            clock=lambda: 1_100,
+            sender_backend_opener=lambda _settings: Backend(),
+        )
+
+    assert json.loads(paths.plan_file.read_text())["status"] == (
+        "PRE_BROADCAST_REJECTED"
+    )
+    assert json.loads(paths.manifest_file.read_text())["state"] == (
+        "PRE_BROADCAST_REJECTED"
+    )
+
+
+def test_ambiguous_old_funding_reconciles_and_creates_separate_capacity_plan(
+    tmp_path,
+):
+    sender = _sender(tmp_path)
+    paths = LiveNotePaths.create(tmp_path / ".note-vault", "note-1")
+    funding = redacted_plan(_plan())
+    funding.update(
+        {
+            "status": "AMBIGUOUS",
+            "consumed_at": 1_100,
+            "last_error_type": "InsufficientAllocationSlots",
+            "last_error": "",
+        }
+    )
+    _atomic_json(paths.plan_file, funding)
+    _atomic_json(
+        paths.manifest_file,
+        {
+            "version": LIVE_NOTE_VERSION,
+            "network": "mutinynet",
+            "note_id": "note-1",
+            "state": "AMBIGUOUS",
+        },
+    )
+    occupied = SimpleNamespace(
+        utxo=SimpleNamespace(colorable=True, exists=True),
+        rgb_allocations=[SimpleNamespace()],
+    )
+    vanilla = SimpleNamespace(
+        utxo=SimpleNamespace(colorable=False, exists=True),
+        rgb_allocations=[],
+    )
+
+    class Wallet:
+        def get_btc_balance(self, online, skip_sync):
+            assert online == "sender-online"
+            assert skip_sync is False
+            return SimpleNamespace(
+                vanilla=SimpleNamespace(spendable=20_000),
+                colored=SimpleNamespace(spendable=1_000),
+            )
+
+        def list_unspents(self, online, settled_only, skip_sync):
+            assert (online, settled_only, skip_sync) == (
+                "sender-online",
+                False,
+                False,
+            )
+            return [occupied, vanilla]
+
+        def list_transfers(self, _asset):
+            return [
+                SimpleNamespace(
+                    kind=SimpleNamespace(name="SEND"), recipient_id="older-recipient"
+                )
+            ]
+
+    class Backend:
+        def __init__(self):
+            self._wallet = Wallet()
+            self._online = "sender-online"
+
+        def refresh(self):
+            return {}
+
+        def spendable_balance(self, _asset):
+            return 50_000_000
+
+        def close(self):
+            pass
+
+    plan, manifest = prepare_live_funding_capacity_plan(
+        sender,
+        vault_root=paths.root,
+        note_id="note-1",
+        clock=lambda: 1_200,
+        id_factory=lambda: "funding-capacity-1",
+        sender_backend_opener=lambda _settings: Backend(),
+    )
+
+    assert plan.operation == "create-funding-source-colorable-utxo"
+    assert plan.plan_id == "funding-capacity-1"
+    assert plan.utxo_size_sat == 8_000
+    assert manifest["state"] == "FUNDING_CAPACITY_PLANNED"
+    assert json.loads(paths.plan_file.read_text())["status"] == (
+        "PRE_BROADCAST_REJECTED"
+    )
+    assert json.loads(paths.funding_capacity_plan_file.read_text())["status"] == (
+        "PLANNED"
+    )
+
+
+def test_expired_funding_capacity_plan_is_superseded_without_broadcast(tmp_path):
+    sender = _sender(tmp_path)
+    paths = LiveNotePaths.create(tmp_path / ".note-vault", "note-1")
+    funding = redacted_plan(_plan())
+    funding["status"] = "PRE_BROADCAST_REJECTED"
+    _atomic_json(paths.plan_file, funding)
+    expired = LiveCapacityPlan(
+        version=LIVE_NOTE_VERSION,
+        plan_id="expired-capacity",
+        network="mutinynet",
+        operation="create-funding-source-colorable-utxo",
+        note_id="note-1",
+        planned_timestamp=1_000,
+        source_wallet="dock-wallet:fingerprint-a",
+        vanilla_spendable_before=20_000,
+        colored_spendable_before=1_000,
+        colorable_utxo_count_before=1,
+        free_colorable_utxo_count_before=0,
+        utxo_count=1,
+        utxo_size_sat=8_000,
+        fee_rate_sat_vb=2,
+        expiration_timestamp=1_100,
+    )
+    _atomic_json(
+        paths.funding_capacity_plan_file,
+        {**redacted_plan(expired), "status": "PLANNED"},
+    )
+    _atomic_json(
+        paths.manifest_file,
+        {
+            "version": LIVE_NOTE_VERSION,
+            "network": "mutinynet",
+            "note_id": "note-1",
+            "state": "FUNDING_CAPACITY_PLANNED",
+        },
+    )
+    occupied = SimpleNamespace(
+        utxo=SimpleNamespace(colorable=True, exists=True),
+        rgb_allocations=[SimpleNamespace()],
+    )
+    vanilla = SimpleNamespace(
+        utxo=SimpleNamespace(colorable=False, exists=True),
+        rgb_allocations=[],
+    )
+
+    class Wallet:
+        def get_btc_balance(self, *_args):
+            return SimpleNamespace(
+                vanilla=SimpleNamespace(spendable=20_000),
+                colored=SimpleNamespace(spendable=1_000),
+            )
+
+        def list_unspents(self, *_args):
+            return [occupied, vanilla]
+
+    class Backend:
+        _wallet = Wallet()
+        _online = "sender-online"
+
+        def refresh(self):
+            return {}
+
+        def close(self):
+            pass
+
+    plan, manifest = prepare_live_funding_capacity_plan(
+        sender,
+        vault_root=paths.root,
+        note_id="note-1",
+        clock=lambda: 1_200,
+        id_factory=lambda: "fresh-capacity",
+        sender_backend_opener=lambda _settings: Backend(),
+    )
+
+    assert plan.plan_id == "fresh-capacity"
+    assert manifest["state"] == "FUNDING_CAPACITY_PLANNED"
+    assert json.loads(paths.funding_capacity_plan_file.read_text())["status"] == (
+        "PLANNED"
+    )
+    archived = paths.funding_capacity_plan_file.parent / (
+        "funding-capacity-expired-capacity.json"
+    )
+    assert json.loads(archived.read_text())["status"] == "SUPERSEDED"
+
+
+def test_funding_capacity_has_its_own_confirmation_and_settlement_refresh(tmp_path):
+    sender = _sender(tmp_path)
+    paths = LiveNotePaths.create(tmp_path / ".note-vault", "note-1")
+    capacity = LiveCapacityPlan(
+        version=LIVE_NOTE_VERSION,
+        plan_id="funding-capacity-1",
+        network="mutinynet",
+        operation="create-funding-source-colorable-utxo",
+        note_id="note-1",
+        planned_timestamp=1_200,
+        source_wallet="dock-wallet:fingerprint-a",
+        vanilla_spendable_before=20_000,
+        colored_spendable_before=1_000,
+        colorable_utxo_count_before=1,
+        free_colorable_utxo_count_before=0,
+        utxo_count=1,
+        utxo_size_sat=8_000,
+        fee_rate_sat_vb=2,
+        expiration_timestamp=2_100,
+    )
+    _atomic_json(
+        paths.funding_capacity_plan_file,
+        {**redacted_plan(capacity), "status": "PLANNED"},
+    )
+    _atomic_json(
+        paths.manifest_file,
+        {
+            "version": LIVE_NOTE_VERSION,
+            "network": "mutinynet",
+            "note_id": "note-1",
+            "state": "FUNDING_CAPACITY_PLANNED",
+        },
+    )
+    occupied = SimpleNamespace(
+        utxo=SimpleNamespace(colorable=True, exists=True),
+        rgb_allocations=[SimpleNamespace()],
+    )
+    vanilla = SimpleNamespace(
+        utxo=SimpleNamespace(colorable=False, exists=True),
+        rgb_allocations=[],
+    )
+    free = SimpleNamespace(
+        utxo=SimpleNamespace(colorable=True, exists=True),
+        rgb_allocations=[],
+    )
+    before_tx = SimpleNamespace(txid="before")
+    capacity_tx = SimpleNamespace(
+        txid="capacity-txid",
+        transaction_type=SimpleNamespace(name="CREATE_UTXOS"),
+        received=8_000,
+        sent=8_300,
+        fee=300,
+        confirmation_time=None,
+    )
+
+    class Wallet:
+        def __init__(self):
+            self.created = False
+            self.confirmed = False
+
+        def get_btc_balance(self, online, skip_sync):
+            assert online == "sender-online"
+            assert skip_sync is False
+            return SimpleNamespace(
+                vanilla=SimpleNamespace(spendable=11_700 if self.created else 20_000),
+                colored=SimpleNamespace(spendable=9_000 if self.created else 1_000),
+            )
+
+        def list_unspents(self, _online, _settled_only, _skip_sync):
+            return [occupied, vanilla, free] if self.confirmed else [occupied, vanilla]
+
+        def list_transactions(self, _online, _skip_sync):
+            return [before_tx, capacity_tx] if self.created else [before_tx]
+
+        def create_utxos(self, *_args):
+            self.created = True
+            return 1
+
+    class Backend:
+        def __init__(self):
+            self._wallet = Wallet()
+            self._online = "sender-online"
+
+        def refresh(self):
+            return {}
+
+        def close(self):
+            pass
+
+    backend = Backend()
+    result = execute_live_funding_capacity_plan(
+        sender,
+        vault_root=paths.root,
+        note_id="note-1",
+        plan_id="funding-capacity-1",
+        confirmation_phrase="CONFIRM funding-capacity-1",
+        clock=lambda: 1_300,
+        sender_backend_opener=lambda _settings: backend,
+    )
+    assert result["txid"] == "capacity-txid"
+    assert json.loads(paths.funding_capacity_plan_file.read_text())["status"] == (
+        "BROADCAST_RECORDED"
+    )
+
+    capacity_tx.confirmation_time = SimpleNamespace(height=123, timestamp=1_350)
+    backend._wallet.confirmed = True
+    refreshed = refresh_live_funding_capacity(
+        sender,
+        vault_root=paths.root,
+        note_id="note-1",
+        clock=lambda: 1_400,
+        sender_backend_opener=lambda _settings: backend,
+    )
+    assert refreshed["confirmed"] is True
+    assert refreshed["free_colorable_utxo_count"] == 1
+    assert json.loads(paths.manifest_file.read_text())["state"] == (
+        "FUNDING_CAPACITY_READY"
+    )
+
+
+def test_funding_renewal_syncs_existing_note_wallet_before_preflight(tmp_path):
+    sender = _sender(tmp_path)
+    paths = LiveNotePaths.create(tmp_path / ".note-vault", "note-1")
+    previous = redacted_plan(_plan())
+    _atomic_json(paths.plan_file, previous)
+    _atomic_json(
+        paths.manifest_file,
+        {
+            "version": LIVE_NOTE_VERSION,
+            "network": "mutinynet",
+            "note_id": "note-1",
+            "state": "AWAITING_FUNDING",
+            "created_at": 1_000,
+            "asset_id": "rgb:usdt",
+            "amount_base_units": 5_000_000,
+            "master_fingerprint": "note-fingerprint",
+        },
+    )
+    _write_private(paths.invoice_file, b"rgb-invoice")
+    parsed = SimpleNamespace(
+        recipient_id="recipient",
+        asset_id="rgb:usdt",
+        expiration_timestamp=10_000,
+        transport_endpoints=(),
+        unknown_query_params={},
+    )
+
+    class NoteWallet:
+        def get_btc_balance(self, online, skip_sync):
+            assert online == "note-online"
+            assert skip_sync is False
+            return SimpleNamespace(
+                vanilla=SimpleNamespace(
+                    settled=104_000, future=104_000, spendable=104_000
+                ),
+                colored=SimpleNamespace(settled=0, future=0, spendable=0),
+            )
+
+        def get_address(self):
+            return "tb1pcurrent"
+
+        def list_unspents(self, online, settled_only, skip_sync):
+            assert (online, settled_only, skip_sync) == (
+                "note-online",
+                False,
+                False,
+            )
+            return [SimpleNamespace()]
+
+    class NoteBackend:
+        def __init__(self):
+            self._wallet = NoteWallet()
+            self._online = "note-online"
+
+        def parse_invoice(self, invoice):
+            assert invoice == "rgb-invoice"
+            return parsed
+
+        def close(self):
+            pass
+
+    class SenderBackend:
+        def parse_invoice(self, invoice):
+            assert invoice == "rgb-invoice"
+            return parsed
+
+        def spendable_balance(self, asset_id):
+            assert asset_id == "rgb:usdt"
+            return 55_000_000
+
+        def close(self):
+            pass
+
+    plan, manifest = renew_live_funding_plan(
+        sender,
+        vault_root=paths.root,
+        note_id="note-1",
+        clock=lambda: 1_100,
+        id_factory=lambda: "plan-2",
+        note_backend_opener=lambda _settings: NoteBackend(),
+        sender_backend_opener=lambda _settings: SenderBackend(),
+    )
+
+    assert plan.note_vanilla_spendable_before == 104_000
+    assert plan.note_btc_address == "tb1pcurrent"
+    assert manifest["state"] == "AWAITING_FUNDING"
+    archived = paths.plan_file.parent / "funding-plan-1.json"
+    assert json.loads(archived.read_text())["status"] == "SUPERSEDED"
+    assert json.loads(paths.plan_file.read_text())["plan_id"] == "plan-2"
 
 
 def test_refresh_activates_note_only_with_exact_settled_balance(tmp_path):
@@ -266,7 +923,8 @@ def test_refresh_activates_note_only_with_exact_settled_balance(tmp_path):
 
 
 def test_prepare_capsule_is_secret_redacted_and_idempotent(tmp_path):
-    sender = _sender(tmp_path)
+    # Profile B may issue; the private issuer binding, not the A/B label, owns it.
+    sender = _destination(tmp_path)
     note_id = "758186be-791d-4c8c-92f5-a8c4194ac856"
     paths = LiveNotePaths.create(tmp_path / ".note-vault", note_id)
     txid = "aa" * 32
@@ -295,6 +953,7 @@ def test_prepare_capsule_is_secret_redacted_and_idempotent(tmp_path):
             "network": "mutinynet",
             "note_id": note_id,
             "state": "ACTIVE",
+            "issuer_master_fingerprint": "fingerprint-b",
             "funding_settlement": {
                 "txid": txid,
                 "transfer_status": "settled",
@@ -335,6 +994,13 @@ def test_prepare_capsule_is_secret_redacted_and_idempotent(tmp_path):
     )
     assert second["created"] is False
     assert second["artifact_sha256"] == first["artifact_sha256"]
+
+    with pytest.raises(LiveNoteError, match="different funding dock wallet"):
+        prepare_live_bearer_capsule(
+            _sender(tmp_path),
+            vault_root=paths.root,
+            note_id=note_id,
+        )
 
 
 def _active_capsule(tmp_path: Path) -> tuple[LiveNotePaths, dict[str, object], bytes]:

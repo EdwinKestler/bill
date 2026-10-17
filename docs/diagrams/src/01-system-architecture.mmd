@@ -5,12 +5,12 @@ flowchart LR
     classDef external fill:#f1f5f9,stroke:#64748b,color:#1e293b,stroke-width:2px
     classDef warning fill:#fff7ed,stroke:#ea580c,color:#431407,stroke-width:2px
 
-    humanA["Person A"]:::external
-    humanB["Final holder B"]:::external
+    humanA["Issuer"]:::external
+    humanB["Eventual holder"]:::external
 
     subgraph dockAZone["Dock A laptop"]
         webA["Direct-mode web desk"]:::implemented
-        walletA["Wallet A rgb-lib"]:::verified
+        walletA["Issuing dock wallet | example A"]:::verified
         bleA["Bleak dock central"]:::verified
         qvacA["QVAC typed intent"]:::planned
         webA --> walletA
@@ -34,7 +34,7 @@ flowchart LR
 
     subgraph dockBZone["Dock B laptop"]
         bleB["Bleak extraction"]:::verified
-        walletB["Wallet B rgb-lib"]:::verified
+        walletB["Holder-chosen wallet | example B"]:::verified
         settle["Exact txid + assignment + balance verifier"]:::verified
         qvacB["QVAC redeem intent"]:::planned
         bleB --> walletB --> settle

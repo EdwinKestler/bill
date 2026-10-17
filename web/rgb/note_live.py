@@ -1,9 +1,10 @@
 """Isolated live rgb-lib backend for the M1 disposable-note experiment.
 
 This module provisions one ignored wallet directory per note and prepares a
-durable, immutable Wallet A -> note funding plan.  Preparing a plan never
-broadcasts.  Executing it consumes the exact confirmation on disk before the
-rgb-lib send boundary and never retries an ambiguous send.
+durable, immutable local-wallet -> note funding plan. Preparing a plan never
+broadcasts and does not name the eventual redemption wallet. Executing it
+consumes the exact confirmation on disk before the rgb-lib send boundary and
+never retries an ambiguous send.
 """
 
 from __future__ import annotations
@@ -75,6 +76,8 @@ class LiveNotePaths:
     redemption_plan_file: Path
     redemption_consignment_file: Path
     redemption_journal_file: Path
+    funding_btc_topup_plan_file: Path
+    funding_capacity_plan_file: Path
     redemption_capacity_plan_file: Path
 
     @classmethod
@@ -94,6 +97,12 @@ class LiveNotePaths:
             redemption_plan_file=note_dir / "plans" / "redemption.json",
             redemption_consignment_file=note_dir / "artifacts" / "redemption.rgbc",
             redemption_journal_file=note_dir / "journal" / "redemption.jsonl",
+            funding_btc_topup_plan_file=(
+                note_dir / "plans" / "funding-btc-topup.json"
+            ),
+            funding_capacity_plan_file=(
+                note_dir / "plans" / "funding-capacity.json"
+            ),
             redemption_capacity_plan_file=(
                 note_dir / "plans" / "redemption-capacity.json"
             ),
@@ -180,6 +189,29 @@ class LiveCapacityPlan:
     free_colorable_utxo_count_before: int
     utxo_count: int
     utxo_size_sat: int
+    fee_rate_sat_vb: int
+    expiration_timestamp: int
+
+    @property
+    def confirmation_phrase(self) -> str:
+        return f"CONFIRM {self.plan_id}"
+
+
+@dataclass(frozen=True)
+class LiveBtcTopupPlan:
+    version: int
+    plan_id: str
+    network: str
+    operation: str
+    note_id: str
+    planned_timestamp: int
+    source_wallet: str
+    destination_address: str
+    topup_amount_sat: int
+    note_vanilla_spendable_before: int
+    target_note_vanilla_sat: int
+    source_vanilla_spendable_before: int
+    source_colored_spendable_before: int
     fee_rate_sat_vb: int
     expiration_timestamp: int
 
@@ -339,14 +371,17 @@ def _provision_wallet(
 
 
 def _validate_sender(sender: RgbSettings) -> None:
-    if sender.role is not BillRole.A:
-        raise LiveNoteError("live note funding must use the isolated Wallet A environment")
     if sender.master_fingerprint is None or sender.mnemonic_file is None:
-        raise LiveNoteError("Wallet A credentials are not configured")
+        raise LiveNoteError("funding dock wallet credentials are not configured")
 
 
 def _plan_payload(
-    plan: LiveFundingPlan | LiveRedemptionPlan | LiveCapacityPlan, *, status: str
+    plan: LiveFundingPlan
+    | LiveRedemptionPlan
+    | LiveCapacityPlan
+    | LiveBtcTopupPlan,
+    *,
+    status: str,
 ) -> dict[str, object]:
     value = asdict(plan)
     value.update(
@@ -399,6 +434,8 @@ def prepare_live_funding_plan(
         "amount_base_units": amount_base_units,
         "denomination_cents": NOTE_DENOMINATION_CENTS,
         "master_fingerprint": fingerprint,
+        "issuer_master_fingerprint": str(sender.master_fingerprint),
+        "issuer_wallet_label": sender.wallet_label or f"Wallet {sender.role.value}",
         "wallet_dir": str(paths.wallet_dir),
         "mnemonic_file": str(paths.mnemonic_file),
     }
@@ -429,6 +466,61 @@ def prepare_live_funding_plan(
             f"note {note_id} was preserved after preparation failed; "
             "resume this note instead of creating another"
         ) from exc
+
+
+def abandon_live_unbroadcast_note(
+    sender: RgbSettings,
+    *,
+    vault_root: Path,
+    note_id: str,
+    reason: str = "operator-test-reset",
+    clock: Callable[[], float] = time.time,
+) -> dict[str, object]:
+    """Close a failed note shell only when durable evidence proves no send began."""
+
+    _validate_sender(sender)
+    paths = LiveNotePaths.create(vault_root, note_id)
+    manifest = _read_json(paths.manifest_file)
+    if manifest.get("version") != LIVE_NOTE_VERSION or manifest.get("network") != NETWORK:
+        raise LiveNoteError("preserved note version or network is invalid")
+    if manifest.get("note_id") != note_id:
+        raise LiveNoteError("preserved note ID mismatch")
+    if str(manifest.get("issuer_master_fingerprint") or "").lower() != str(
+        sender.master_fingerprint or ""
+    ).lower():
+        raise LiveNoteError("note does not belong to the selected issuing wallet")
+    if manifest.get("state") not in {
+        "PREPARING",
+        "PREPARATION_RECOVERY_REQUIRED",
+    }:
+        raise LiveNoteError("only a never-planned preparation failure may be abandoned")
+    if paths.plan_file.exists():
+        raise LiveNoteError("note has a funding plan and cannot be abandoned")
+    if paths.consignment_file.exists() or paths.capsule_file.exists():
+        raise LiveNoteError("note has funded artifacts and cannot be abandoned")
+    if manifest.get("funding") or manifest.get("funding_txid"):
+        raise LiveNoteError("note has broadcast evidence and cannot be abandoned")
+    if not reason.strip() or len(reason.strip()) > 120:
+        raise LiveNoteError("abandon reason must be 1 to 120 characters")
+
+    abandoned_at = int(clock())
+    manifest.update(
+        {
+            "state": "ABANDONED",
+            "abandoned_at": abandoned_at,
+            "abandon_reason": reason.strip(),
+            "broadcast": False,
+        }
+    )
+    _atomic_json(paths.manifest_file, manifest)
+    return {
+        "phase": "live-note-abandoned",
+        "note_id": note_id,
+        "state": "ABANDONED",
+        "abandoned_at": abandoned_at,
+        "broadcast": False,
+        "preserved": True,
+    }
 
 
 def resume_live_funding_plan(
@@ -502,7 +594,7 @@ def renew_live_funding_plan(
     id_factory: Callable[[], str] = lambda: str(uuid.uuid4()),
     note_backend_opener: Callable[
         [RgbSettings], RgbLibBackend
-    ] = RgbLibBackend.load_offline,
+    ] = RgbLibBackend.open,
     sender_backend_opener: Callable[[RgbSettings], RgbLibBackend] = RgbLibBackend.open,
 ) -> tuple[LiveFundingPlan, dict[str, object]]:
     """Archive one unspent plan and bind a fresh plan to current balances."""
@@ -609,13 +701,19 @@ def _finish_live_funding_plan(
             raise LiveNoteError("note invoice contains unsupported query parameters")
         if parsed.expiration_timestamp is None:
             raise LiveNoteError("note invoice has no expiration")
-        btc = note_backend._wallet.get_btc_balance(None, True)
+        # Initial preparation may deliberately use an offline note wallet, but
+        # renewal is the point where external BTC preflight funding must be
+        # discovered.  An online backend must therefore sync instead of
+        # repeatedly deriving a new address from stale local state.
+        online = getattr(note_backend, "_online", None)
+        skip_sync = online is None
+        btc = note_backend._wallet.get_btc_balance(online, skip_sync)
         note_btc = {
             "address": note_backend._wallet.get_address(),
             "vanilla": _balance(btc.vanilla),
             "colored": _balance(btc.colored),
             "unspent_count": len(
-                note_backend._wallet.list_unspents(None, False, True)
+                note_backend._wallet.list_unspents(online, False, skip_sync)
             ),
         }
     finally:
@@ -629,16 +727,18 @@ def _finish_live_funding_plan(
     try:
         sender_parsed = sender_backend.parse_invoice(invoice)
         if sender_parsed.recipient_id != parsed.recipient_id:
-            raise LiveNoteError("Wallet A parsed a different invoice recipient")
+            raise LiveNoteError("funding dock wallet parsed a different invoice recipient")
         if sender_parsed.asset_id not in {None, asset_id}:
-            raise LiveNoteError("Wallet A parsed an invoice for a different asset")
+            raise LiveNoteError("funding dock wallet parsed an invoice for a different asset")
         if sender_parsed.transport_endpoints or sender_parsed.unknown_query_params:
-            raise LiveNoteError("Wallet A rejected the invoice as non-canonical OOB")
+            raise LiveNoteError(
+                "funding dock wallet rejected the invoice as non-canonical OOB"
+            )
         source_balance = sender_backend.spendable_balance(asset_id)
     finally:
         sender_backend.close()
     if source_balance < amount_base_units:
-        raise LiveNoteError("Wallet A lacks the exact 5 USDT note amount")
+        raise LiveNoteError("funding dock wallet lacks the exact 5 USDT note amount")
 
     plan = LiveFundingPlan(
         version=LIVE_NOTE_VERSION,
@@ -647,7 +747,7 @@ def _finish_live_funding_plan(
         operation="fund-disposable-note",
         note_id=note_id,
         planned_timestamp=planned_at,
-        source_wallet="wallet-a",
+        source_wallet=f"dock-wallet:{sender.master_fingerprint}",
         asset_id=asset_id,
         amount_base_units=amount_base_units,
         denomination_cents=NOTE_DENOMINATION_CENTS,
@@ -755,7 +855,7 @@ def execute_live_funding_plan(
         balance = sender_backend.spendable_balance(str(plan["asset_id"]))
         if balance != int(plan["source_spendable_before"]):
             raise LiveNoteConfirmationRequired(
-                "Wallet A balance changed; supersede and review a new plan"
+                "funding dock wallet balance changed; supersede and review a new plan"
             )
 
         # From here onward, a failure is ambiguous. Persist consumption before
@@ -780,22 +880,29 @@ def execute_live_funding_plan(
                 expiration_timestamp=int(plan["expiration_timestamp"]),
             )
         except Exception as exc:
+            prebroadcast = type(exc).__name__ == "InsufficientAllocationSlots"
+            failure_status = "PRE_BROADCAST_REJECTED" if prebroadcast else "AMBIGUOUS"
             plan.update(
                 {
-                    "status": "AMBIGUOUS",
+                    "status": failure_status,
                     "last_error_type": type(exc).__name__,
                     "last_error": str(exc),
                 }
             )
             manifest.update(
                 {
-                    "state": "AMBIGUOUS",
+                    "state": failure_status,
                     "last_error_type": type(exc).__name__,
                     "last_error": str(exc),
                 }
             )
             _atomic_json(paths.plan_file, plan)
             _atomic_json(paths.manifest_file, manifest)
+            if prebroadcast:
+                raise LiveNoteError(
+                    "funding needs a free RGB allocation slot; the rejected plan "
+                    "was consumed before any send"
+                ) from exc
             raise LiveNoteError(
                 "funding send outcome is ambiguous; recovery must not resend"
             ) from exc
@@ -989,6 +1096,20 @@ def prepare_live_bearer_capsule(
     _validate_sender(sender)
     paths, plan = load_funding_plan(vault_root, note_id)
     manifest = _read_json(paths.manifest_file)
+    issuer_fingerprint = manifest.get("issuer_master_fingerprint")
+    if issuer_fingerprint is not None:
+        if not hmac.compare_digest(
+            str(issuer_fingerprint).lower(), str(sender.master_fingerprint).lower()
+        ):
+            raise LiveNoteError(
+                "active note belongs to a different funding dock wallet"
+            )
+    elif not (
+        sender.role is BillRole.A and plan.get("source_wallet") == "wallet-a"
+    ):
+        raise LiveNoteError(
+            "legacy active note cannot be attributed to this funding dock wallet"
+        )
     if manifest.get("state") != "ACTIVE" or plan.get("status") != "FUNDING_SETTLED":
         raise LiveNoteError("only an exactly settled active note can become a capsule")
     settlement = manifest.get("funding_settlement")
@@ -1105,10 +1226,8 @@ def prepare_live_bearer_capsule(
 
 
 def _validate_destination(destination: RgbSettings) -> None:
-    if destination.role is not BillRole.B:
-        raise LiveNoteError("live note redemption must use the isolated Wallet B environment")
     if destination.master_fingerprint is None or destination.mnemonic_file is None:
-        raise LiveNoteError("Wallet B credentials are not configured")
+        raise LiveNoteError("redemption dock wallet credentials are not configured")
 
 
 def _redemption_plan_from_payload(payload: Mapping[str, Any]) -> LiveRedemptionPlan:
@@ -1135,7 +1254,7 @@ def prepare_live_redemption_plan(
     ] = RgbLibBackend.load_offline,
     note_backend_opener: Callable[[RgbSettings], RgbLibBackend] = RgbLibBackend.open,
 ) -> tuple[LiveRedemptionPlan, dict[str, object]]:
-    """Verify one bearer capability and persist a no-broadcast Wallet B plan."""
+    """Verify one bearer capability and persist a no-broadcast destination plan."""
 
     _validate_destination(destination)
     if invoice_lifetime_seconds < 900 or plan_lifetime_seconds < 60:
@@ -1214,11 +1333,13 @@ def prepare_live_redemption_plan(
             invoice = receive.invoice
         parsed = destination_backend.parse_invoice(invoice)
         if parsed.asset_id != capsule.asset_id:
-            raise LiveNoteError("Wallet B invoice is bound to a different asset")
+            raise LiveNoteError("redemption dock invoice is bound to a different asset")
         if parsed.transport_endpoints or parsed.unknown_query_params:
-            raise LiveNoteError("Wallet B invoice is not canonical transport-free OOB")
+            raise LiveNoteError(
+                "redemption dock invoice is not canonical transport-free OOB"
+            )
         if parsed.expiration_timestamp is None:
-            raise LiveNoteError("Wallet B invoice has no expiration")
+            raise LiveNoteError("redemption dock invoice has no expiration")
     finally:
         destination_backend.close()
     if not paths.redemption_invoice_file.exists():
@@ -1235,7 +1356,9 @@ def prepare_live_redemption_plan(
         note_backend.refresh()
         note_parsed = note_backend.parse_invoice(invoice)
         if note_parsed.recipient_id != parsed.recipient_id:
-            raise LiveNoteError("note wallet parsed a different Wallet B recipient")
+            raise LiveNoteError(
+                "note wallet parsed a different redemption-dock recipient"
+            )
         if note_parsed.asset_id != capsule.asset_id:
             raise LiveNoteError("note wallet parsed a different invoice asset")
         if note_parsed.transport_endpoints or note_parsed.unknown_query_params:
@@ -1259,7 +1382,7 @@ def prepare_live_redemption_plan(
         note_id=capsule.note_id,
         planned_timestamp=planned_at,
         source_wallet="disposable-note",
-        destination_wallet="wallet-b",
+        destination_wallet=f"dock-wallet:{destination.master_fingerprint}",
         destination_master_fingerprint=str(destination.master_fingerprint),
         asset_id=capsule.asset_id,
         amount_base_units=capsule.amount_base_units,
@@ -1387,7 +1510,7 @@ def execute_live_redemption_plan(
     if str(plan.get("destination_master_fingerprint")) != str(
         destination.master_fingerprint
     ):
-        raise LiveNoteError("redemption plan belongs to a different Wallet B")
+        raise LiveNoteError("redemption plan belongs to a different dock wallet")
 
     try:
         invoice = paths.redemption_invoice_file.read_text(encoding="utf-8")
@@ -1634,7 +1757,7 @@ def _import_recorded_redemption(
             },
         )
         raise LiveNoteError(
-            "redemption broadcast is recorded but Wallet B import needs recovery; do not resend"
+            "redemption broadcast is recorded but destination import needs recovery; do not resend"
         ) from exc
 
     statuses = {str(key): value for key, value in updated.items()}
@@ -1677,7 +1800,7 @@ def refresh_live_redemption_settlement(
         [RgbSettings], RgbLibBackend
     ] = RgbLibBackend.open,
 ) -> dict[str, object]:
-    """Refresh Wallet B and close one redemption only after exact settlement proof."""
+    """Refresh the destination wallet after exact settlement proof."""
 
     _validate_destination(destination)
     paths, plan = load_redemption_plan(vault_root, note_id)
@@ -1731,18 +1854,18 @@ def refresh_live_redemption_settlement(
 
     if len(matches) != 1:
         raise LiveNoteError(
-            "Wallet B does not contain exactly one matching redemption transfer"
+            "destination wallet does not contain exactly one matching redemption transfer"
         )
     transfer = matches[0]
     transfer_kind = _enum_name(getattr(transfer, "kind"))
     transfer_status = _enum_name(getattr(transfer, "status"))
     if transfer_kind != "receive_witness":
-        raise LiveNoteError("matching Wallet B redemption transfer has the wrong kind")
+        raise LiveNoteError("matching destination redemption transfer has the wrong kind")
     requested_assignment = getattr(transfer, "requested_assignment", None)
     requested_amount = getattr(requested_assignment, "amount", None)
     if requested_amount is not None and int(requested_amount) not in {0, expected}:
         raise LiveNoteError(
-            "matching Wallet B redemption transfer has an invalid requested amount"
+            "matching destination redemption transfer has an invalid requested amount"
         )
     assignment_amounts = [
         int(amount)
@@ -1751,11 +1874,11 @@ def refresh_live_redemption_settlement(
     ]
     if assignment_amounts != [expected]:
         raise LiveNoteError(
-            "matching Wallet B redemption transfer has the wrong settled assignment"
+            "matching destination redemption transfer has the wrong settled assignment"
         )
     if transfer_status not in {"waiting_confirmations", "settled"}:
         raise LiveNoteError(
-            "matching Wallet B redemption transfer is not pending or settled"
+            "matching destination redemption transfer is not pending or settled"
         )
 
     watch = plan.get("settlement_watch")
@@ -1765,11 +1888,11 @@ def refresh_live_redemption_settlement(
             destination_balance_after = destination_balance_before + expected
             if balance["future"] != destination_balance_after:
                 raise LiveNoteError(
-                    "Wallet B pending balance does not equal baseline plus 5 USDT"
+                    "destination pending balance does not equal baseline plus 5 USDT"
                 )
         else:
             if balance["settled"] < expected:
-                raise LiveNoteError("Wallet B settled balance is below 5 USDT")
+                raise LiveNoteError("destination settled balance is below 5 USDT")
             destination_balance_after = balance["settled"]
             destination_balance_before = destination_balance_after - expected
         watch = {
@@ -1864,7 +1987,7 @@ def recover_live_redemption(
         [RgbSettings], RgbLibBackend
     ] = RgbLibBackend.open,
 ) -> dict[str, object]:
-    """Recover only a recorded Wallet B import; never repeat the RGB send."""
+    """Recover only a recorded destination import; never repeat the RGB send."""
 
     _validate_destination(destination)
     paths, plan = load_redemption_plan(vault_root, note_id)
@@ -1896,8 +2019,10 @@ def recover_live_redemption(
 
 
 def _capacity_snapshot(backend: RgbLibBackend) -> dict[str, int]:
-    btc = backend._wallet.get_btc_balance(None, True)
-    unspents = backend._wallet.list_unspents(backend._online, False, True)
+    online = getattr(backend, "_online", None)
+    skip_sync = online is None
+    btc = backend._wallet.get_btc_balance(online, skip_sync)
+    unspents = backend._wallet.list_unspents(online, False, skip_sync)
     colorable = []
     free = []
     for local in unspents:
@@ -2007,7 +2132,816 @@ def _capacity_plan_from_payload(payload: Mapping[str, Any]) -> LiveCapacityPlan:
         values = {field.name: payload[field.name] for field in fields(LiveCapacityPlan)}
         return LiveCapacityPlan(**values)
     except (KeyError, TypeError, ValueError) as exc:
-        raise LiveNoteError("durable redemption-capacity plan is invalid") from exc
+        raise LiveNoteError("durable capacity plan is invalid") from exc
+
+
+def _btc_topup_plan_from_payload(payload: Mapping[str, Any]) -> LiveBtcTopupPlan:
+    try:
+        values = {field.name: payload[field.name] for field in fields(LiveBtcTopupPlan)}
+        return LiveBtcTopupPlan(**values)
+    except (KeyError, TypeError, ValueError) as exc:
+        raise LiveNoteError("durable note BTC top-up plan is invalid") from exc
+
+
+def prepare_live_funding_btc_topup_plan(
+    sender: RgbSettings,
+    *,
+    vault_root: Path,
+    note_id: str,
+    plan_lifetime_seconds: int = 900,
+    clock: Callable[[], float] = time.time,
+    id_factory: Callable[[], str] = lambda: str(uuid.uuid4()),
+    sender_backend_opener: Callable[[RgbSettings], RgbLibBackend] = RgbLibBackend.open,
+) -> tuple[LiveBtcTopupPlan, dict[str, object]]:
+    """Plan a dock-funded Bitcoin top-up for one disposable note.
+
+    This replaces the interactive faucet step. It is still a separate Bitcoin
+    spend with its own exact confirmation and never authorizes the later RGB
+    funding send.
+    """
+
+    _validate_sender(sender)
+    if plan_lifetime_seconds < 60:
+        raise LiveNoteError("note BTC top-up plan lifetime is too short")
+    paths, funding = load_funding_plan(vault_root, note_id)
+    manifest = _read_json(paths.manifest_file)
+
+    if paths.funding_btc_topup_plan_file.exists():
+        existing = _read_json(paths.funding_btc_topup_plan_file)
+        plan = _btc_topup_plan_from_payload(existing)
+        if existing.get("status") != "PLANNED":
+            raise LiveNoteError("note BTC top-up plan is already consumed")
+        if manifest.get("state") != "BTC_TOPUP_PLANNED":
+            raise LiveNoteError("note BTC top-up state does not match its plan")
+        if int(existing.get("expiration_timestamp", 0)) > int(clock()):
+            return plan, manifest
+        previous_id = str(existing["plan_id"])
+        archive = (
+            paths.funding_btc_topup_plan_file.parent
+            / f"funding-btc-topup-{previous_id}.json"
+        )
+        if archive.exists():
+            raise LiveNoteError("expired note BTC top-up archive already exists")
+        os.replace(paths.funding_btc_topup_plan_file, archive)
+        existing.update({"status": "SUPERSEDED", "superseded_at": int(clock())})
+        _atomic_json(archive, existing)
+        manifest.update(
+            {
+                "state": "AWAITING_FUNDING",
+                "superseded_funding_btc_topup_plan_id": previous_id,
+                "superseded_funding_btc_topup_plan_path": str(archive),
+            }
+        )
+        _atomic_json(paths.manifest_file, manifest)
+
+    if manifest.get("state") != "AWAITING_FUNDING":
+        raise LiveNoteError("note is not ready for automatic BTC top-up")
+    if funding.get("status") != "PLANNED":
+        raise LiveNoteError("RGB funding plan is not safely awaiting confirmation")
+    current_note_sat = int(funding.get("note_vanilla_spendable_before", 0))
+    target_note_sat = int(funding.get("recommended_redemption_vanilla_sat", 0))
+    if target_note_sat < 1:
+        raise LiveNoteError("note BTC safety target is invalid")
+    if current_note_sat >= target_note_sat:
+        raise LiveNoteError("note already has its required Bitcoin fee reserve")
+    destination = str(funding.get("note_btc_address") or "")
+    if not destination:
+        raise LiveNoteError("note Bitcoin destination is missing")
+
+    backend = sender_backend_opener(sender)
+    try:
+        backend.refresh()
+        capacity = _capacity_snapshot(backend)
+    finally:
+        backend.close()
+    topup_amount = target_note_sat - current_note_sat
+    if capacity["vanilla_spendable"] < topup_amount + 1_000:
+        raise LiveNoteError(
+            "issuing dock wallet lacks enough vanilla Mutinynet sats to fund "
+            "the note fee reserve"
+        )
+
+    planned_at = int(clock())
+    plan = LiveBtcTopupPlan(
+        version=LIVE_NOTE_VERSION,
+        plan_id=id_factory(),
+        network=NETWORK,
+        operation="fund-note-bitcoin-reserve",
+        note_id=note_id,
+        planned_timestamp=planned_at,
+        source_wallet=f"dock-wallet:{sender.master_fingerprint}",
+        destination_address=destination,
+        topup_amount_sat=topup_amount,
+        note_vanilla_spendable_before=current_note_sat,
+        target_note_vanilla_sat=target_note_sat,
+        source_vanilla_spendable_before=capacity["vanilla_spendable"],
+        source_colored_spendable_before=capacity["colored_spendable"],
+        fee_rate_sat_vb=sender.fee_rate,
+        expiration_timestamp=planned_at + plan_lifetime_seconds,
+    )
+    _atomic_json(
+        paths.funding_btc_topup_plan_file,
+        _plan_payload(plan, status="PLANNED"),
+    )
+    manifest.update(
+        {
+            "state": "BTC_TOPUP_PLANNED",
+            "funding_btc_topup_plan_id": plan.plan_id,
+            "funding_btc_topup_plan_path": str(paths.funding_btc_topup_plan_file),
+        }
+    )
+    _atomic_json(paths.manifest_file, manifest)
+    return plan, manifest
+
+
+def execute_live_funding_btc_topup_plan(
+    sender: RgbSettings,
+    *,
+    vault_root: Path,
+    note_id: str,
+    plan_id: str,
+    confirmation_phrase: str,
+    clock: Callable[[], float] = time.time,
+    sender_backend_opener: Callable[[RgbSettings], RgbLibBackend] = RgbLibBackend.open,
+) -> dict[str, object]:
+    """Send the note's Bitcoin fee reserve once after exact confirmation."""
+
+    _validate_sender(sender)
+    paths = LiveNotePaths.create(vault_root, note_id)
+    plan = _read_json(paths.funding_btc_topup_plan_file)
+    _btc_topup_plan_from_payload(plan)
+    manifest = _read_json(paths.manifest_file)
+    if plan.get("plan_id") != plan_id or plan.get("status") != "PLANNED":
+        raise LiveNoteConfirmationRequired("unknown or consumed note BTC top-up plan")
+    if manifest.get("state") != "BTC_TOPUP_PLANNED":
+        raise LiveNoteError("note is not awaiting its Bitcoin reserve top-up")
+    if confirmation_phrase != f"CONFIRM {plan_id}":
+        raise LiveNoteConfirmationRequired("exact confirmation phrase is required")
+    if int(plan.get("expiration_timestamp", 0)) <= int(clock()):
+        raise LiveNoteConfirmationRequired("note BTC top-up plan expired")
+
+    backend = sender_backend_opener(sender)
+    try:
+        backend.refresh()
+        capacity = _capacity_snapshot(backend)
+        if capacity["vanilla_spendable"] != int(
+            plan["source_vanilla_spendable_before"]
+        ):
+            raise LiveNoteConfirmationRequired(
+                "issuing dock BTC balance changed; review a new top-up plan"
+            )
+        if capacity["colored_spendable"] != int(
+            plan["source_colored_spendable_before"]
+        ):
+            raise LiveNoteConfirmationRequired(
+                "issuing dock colored BTC balance changed; review a new top-up plan"
+            )
+
+        now = int(clock())
+        plan.update({"status": "CONFIRMATION_CONSUMED", "consumed_at": now})
+        manifest.update(
+            {
+                "state": "BTC_TOPUP_BROADCAST_IN_PROGRESS",
+                "funding_btc_topup_confirmation_consumed_at": now,
+            }
+        )
+        _atomic_json(paths.funding_btc_topup_plan_file, plan)
+        _atomic_json(paths.manifest_file, manifest)
+        try:
+            txid = backend._wallet.send_btc(
+                backend._online,
+                str(plan["destination_address"]),
+                int(plan["topup_amount_sat"]),
+                int(plan["fee_rate_sat_vb"]),
+                False,
+            )
+        except Exception as exc:
+            plan.update(
+                {
+                    "status": "AMBIGUOUS",
+                    "last_error_type": type(exc).__name__,
+                    "last_error": str(exc),
+                }
+            )
+            manifest.update(
+                {
+                    "state": "BTC_TOPUP_AMBIGUOUS",
+                    "last_error_type": type(exc).__name__,
+                    "last_error": str(exc),
+                }
+            )
+            _atomic_json(paths.funding_btc_topup_plan_file, plan)
+            _atomic_json(paths.manifest_file, manifest)
+            raise LiveNoteError(
+                "note BTC top-up outcome is ambiguous; do not resend"
+            ) from exc
+    finally:
+        backend.close()
+
+    txid = str(txid)
+    try:
+        valid_txid = len(txid) == 64 and int(txid, 16) >= 0
+    except ValueError:
+        valid_txid = False
+    if not valid_txid:
+        plan.update(
+            {
+                "status": "AMBIGUOUS",
+                "last_error_type": "InvalidTxid",
+                "last_error": "send_btc returned an invalid transaction ID",
+            }
+        )
+        manifest.update(
+            {
+                "state": "BTC_TOPUP_AMBIGUOUS",
+                "last_error_type": "InvalidTxid",
+                "last_error": "send_btc returned an invalid transaction ID",
+            }
+        )
+        _atomic_json(paths.funding_btc_topup_plan_file, plan)
+        _atomic_json(paths.manifest_file, manifest)
+        raise LiveNoteError("note BTC top-up returned invalid evidence; do not resend")
+
+    broadcast = {
+        "txid": txid,
+        "destination_address": str(plan["destination_address"]),
+        "topup_amount_sat": int(plan["topup_amount_sat"]),
+    }
+    plan.update({"status": "BROADCAST_RECORDED", "broadcast": broadcast})
+    manifest.update(
+        {"state": "BTC_TOPUP_BROADCAST_RECORDED", "funding_btc_topup": broadcast}
+    )
+    _atomic_json(paths.funding_btc_topup_plan_file, plan)
+    _atomic_json(paths.manifest_file, manifest)
+    return {
+        "phase": "live-note-btc-topup-broadcast",
+        "broadcast": True,
+        "note_id": note_id,
+        "plan_id": plan_id,
+        **broadcast,
+        "warning": "wait for one Mutinynet confirmation, then check the note",
+    }
+
+
+def refresh_live_funding_btc_topup(
+    sender: RgbSettings,
+    *,
+    vault_root: Path,
+    note_id: str,
+    clock: Callable[[], float] = time.time,
+    sender_backend_opener: Callable[[RgbSettings], RgbLibBackend] = RgbLibBackend.open,
+    note_backend_opener: Callable[[RgbSettings], RgbLibBackend] = RgbLibBackend.open,
+) -> dict[str, object]:
+    """Verify the exact top-up tx and the note's confirmed Bitcoin reserve."""
+
+    _validate_sender(sender)
+    paths = LiveNotePaths.create(vault_root, note_id)
+    plan = _read_json(paths.funding_btc_topup_plan_file)
+    _btc_topup_plan_from_payload(plan)
+    manifest = _read_json(paths.manifest_file)
+    if plan.get("status") == "TOPUP_CONFIRMED":
+        return {
+            "phase": "live-note-btc-topup-ready",
+            "note_id": note_id,
+            "plan_id": str(plan["plan_id"]),
+            "confirmed": True,
+            "replayed": True,
+            **dict(plan.get("confirmation", {})),
+        }
+    if (
+        plan.get("status") != "BROADCAST_RECORDED"
+        or manifest.get("state") != "BTC_TOPUP_BROADCAST_RECORDED"
+    ):
+        raise LiveNoteError("note BTC top-up is not ready for confirmation refresh")
+    broadcast = plan.get("broadcast")
+    if not isinstance(broadcast, dict) or not broadcast.get("txid"):
+        raise LiveNoteError("note BTC top-up broadcast evidence is missing")
+
+    sender_backend = sender_backend_opener(sender)
+    try:
+        sender_backend.refresh()
+        matches = [
+            tx
+            for tx in sender_backend._wallet.list_transactions(
+                sender_backend._online, False
+            )
+            if tx.txid == broadcast["txid"]
+        ]
+    finally:
+        sender_backend.close()
+    if len(matches) > 1:
+        raise LiveNoteError("note BTC top-up transaction evidence is not unique")
+    if not matches or getattr(matches[0], "confirmation_time", None) is None:
+        return {
+            "phase": "live-note-btc-topup-waiting",
+            "note_id": note_id,
+            "plan_id": str(plan["plan_id"]),
+            "txid": str(broadcast["txid"]),
+            "confirmed": False,
+        }
+    note_settings = _note_settings(
+        sender,
+        paths,
+        fingerprint=str(manifest["master_fingerprint"]),
+    )
+    note_backend = note_backend_opener(note_settings)
+    try:
+        note_backend.refresh()
+        note_capacity = _capacity_snapshot(note_backend)
+    finally:
+        note_backend.close()
+    if note_capacity["vanilla_spendable"] < int(plan["target_note_vanilla_sat"]):
+        raise LiveNoteError(
+            "top-up transaction confirmed but the note fee reserve is not spendable"
+        )
+
+    confirmation_time = matches[0].confirmation_time
+    confirmation = {
+        "txid": str(broadcast["txid"]),
+        "block_height": int(confirmation_time.height),
+        "block_timestamp": int(confirmation_time.timestamp),
+        "verified_at": int(clock()),
+        "note_vanilla_spendable_sat": note_capacity["vanilla_spendable"],
+    }
+    plan.update({"status": "TOPUP_CONFIRMED", "confirmation": confirmation})
+    manifest.update(
+        {
+            "state": "AWAITING_FUNDING",
+            "funding_btc_topup_confirmation": confirmation,
+        }
+    )
+    _atomic_json(paths.funding_btc_topup_plan_file, plan)
+    _atomic_json(paths.manifest_file, manifest)
+    return {
+        "phase": "live-note-btc-topup-ready",
+        "note_id": note_id,
+        "plan_id": str(plan["plan_id"]),
+        "confirmed": True,
+        "replayed": False,
+        **confirmation,
+    }
+
+
+def reconcile_live_funding_prebroadcast_rejection(
+    sender: RgbSettings,
+    *,
+    vault_root: Path,
+    note_id: str,
+    clock: Callable[[], float] = time.time,
+    sender_backend_opener: Callable[[RgbSettings], RgbLibBackend] = RgbLibBackend.open,
+) -> dict[str, object]:
+    """Prove an old allocation-slot failure did not create a funding send.
+
+    Funding plans created before allocation-slot handling was added were
+    conservatively marked AMBIGUOUS.  The pinned rgb-lib exception is known to
+    occur before ``send_end``; we additionally require the exact source RGB
+    balance and absence of a send to the note's unique recipient before
+    allowing a separate capacity plan.
+    """
+
+    _validate_sender(sender)
+    paths, plan = load_funding_plan(vault_root, note_id)
+    manifest = _read_json(paths.manifest_file)
+    if plan.get("status") == "PRE_BROADCAST_REJECTED":
+        return {
+            "phase": "live-funding-prebroadcast-reconciled",
+            "note_id": note_id,
+            "plan_id": str(plan["plan_id"]),
+            "status": "PRE_BROADCAST_REJECTED",
+            "replayed": True,
+        }
+    if (
+        plan.get("status") != "AMBIGUOUS"
+        or manifest.get("state") != "AMBIGUOUS"
+        or plan.get("last_error_type") != "InsufficientAllocationSlots"
+        or plan.get("broadcast")
+    ):
+        raise LiveNoteError("ambiguous funding is not a proven pre-broadcast rejection")
+
+    backend = sender_backend_opener(sender)
+    try:
+        backend.refresh()
+        asset_id = str(plan["asset_id"])
+        balance = backend.spendable_balance(asset_id)
+        recipient_id = str(plan["recipient_id"])
+        sends_to_recipient = [
+            transfer
+            for transfer in backend._wallet.list_transfers(asset_id)
+            if _enum_name(getattr(transfer, "kind", "")) == "send"
+            and str(getattr(transfer, "recipient_id", "")) == recipient_id
+        ]
+        capacity = _capacity_snapshot(backend)
+    finally:
+        backend.close()
+    if balance != int(plan["source_spendable_before"]) or sends_to_recipient:
+        raise LiveNoteError(
+            "wallet evidence cannot prove that the rejected funding stayed pre-broadcast"
+        )
+
+    reconciled_at = int(clock())
+    plan.update({"status": "PRE_BROADCAST_REJECTED", "reconciled_at": reconciled_at})
+    manifest.update({"state": "PRE_BROADCAST_REJECTED"})
+    _atomic_json(paths.plan_file, plan)
+    _atomic_json(paths.manifest_file, manifest)
+    return {
+        "phase": "live-funding-prebroadcast-reconciled",
+        "note_id": note_id,
+        "plan_id": str(plan["plan_id"]),
+        "status": "PRE_BROADCAST_REJECTED",
+        "replayed": False,
+        "source_spendable": balance,
+        **capacity,
+    }
+
+
+def prepare_live_funding_capacity_plan(
+    sender: RgbSettings,
+    *,
+    vault_root: Path,
+    note_id: str,
+    utxo_size_sat: int = 8_000,
+    plan_lifetime_seconds: int = 900,
+    clock: Callable[[], float] = time.time,
+    id_factory: Callable[[], str] = lambda: str(uuid.uuid4()),
+    sender_backend_opener: Callable[[RgbSettings], RgbLibBackend] = RgbLibBackend.open,
+) -> tuple[LiveCapacityPlan, dict[str, object]]:
+    """Prepare a separately confirmed source-wallet RGB capacity transaction."""
+
+    _validate_sender(sender)
+    if utxo_size_sat < 1_000 or plan_lifetime_seconds < 60:
+        raise LiveNoteError("capacity UTXO size or plan lifetime is too small")
+    now = int(clock())
+    paths, funding = load_funding_plan(vault_root, note_id)
+    manifest = _read_json(paths.manifest_file)
+    if funding.get("status") == "AMBIGUOUS":
+        reconcile_live_funding_prebroadcast_rejection(
+            sender,
+            vault_root=vault_root,
+            note_id=note_id,
+            clock=clock,
+            sender_backend_opener=sender_backend_opener,
+        )
+        funding = _read_json(paths.plan_file)
+        manifest = _read_json(paths.manifest_file)
+    if funding.get("status") != "PRE_BROADCAST_REJECTED":
+        raise LiveNoteError("funding is not ready for source-capacity preparation")
+    if paths.funding_capacity_plan_file.exists():
+        existing = _read_json(paths.funding_capacity_plan_file)
+        plan = _capacity_plan_from_payload(existing)
+        if existing.get("status") != "PLANNED":
+            raise LiveNoteError("funding-capacity plan is already consumed")
+        if manifest.get("state") != "FUNDING_CAPACITY_PLANNED":
+            raise LiveNoteError("funding-capacity plan and manifest state disagree")
+        if int(existing.get("expiration_timestamp", 0)) > now:
+            return plan, manifest
+
+        archive = (
+            paths.funding_capacity_plan_file.parent
+            / f"funding-capacity-{plan.plan_id}.json"
+        )
+        if archive.exists():
+            raise LiveNoteError("expired funding-capacity plan archive already exists")
+        os.replace(paths.funding_capacity_plan_file, archive)
+        existing.update({"status": "SUPERSEDED", "superseded_at": now})
+        _atomic_json(archive, existing)
+        manifest.update(
+            {
+                "state": "PRE_BROADCAST_REJECTED",
+                "superseded_funding_capacity_plan_id": plan.plan_id,
+                "superseded_funding_capacity_plan_path": str(archive),
+            }
+        )
+        manifest.pop("funding_capacity_plan_id", None)
+        manifest.pop("funding_capacity_plan_path", None)
+        _atomic_json(paths.manifest_file, manifest)
+    elif manifest.get("state") != "PRE_BROADCAST_REJECTED":
+        raise LiveNoteError("funding is not ready for source-capacity preparation")
+
+    backend = sender_backend_opener(sender)
+    try:
+        backend.refresh()
+        capacity = _capacity_snapshot(backend)
+    finally:
+        backend.close()
+    if capacity["free_colorable_utxo_count"] != 0:
+        raise LiveNoteError(
+            "source wallet reports free colorable capacity; manual reconciliation is required"
+        )
+    if capacity["vanilla_spendable"] < utxo_size_sat + 1_000:
+        raise LiveNoteError("source wallet lacks enough vanilla sats for RGB capacity")
+
+    planned_at = int(clock())
+    plan = LiveCapacityPlan(
+        version=LIVE_NOTE_VERSION,
+        plan_id=id_factory(),
+        network=NETWORK,
+        operation="create-funding-source-colorable-utxo",
+        note_id=note_id,
+        planned_timestamp=planned_at,
+        source_wallet=f"dock-wallet:{sender.master_fingerprint}",
+        vanilla_spendable_before=capacity["vanilla_spendable"],
+        colored_spendable_before=capacity["colored_spendable"],
+        colorable_utxo_count_before=capacity["colorable_utxo_count"],
+        free_colorable_utxo_count_before=capacity["free_colorable_utxo_count"],
+        utxo_count=1,
+        utxo_size_sat=utxo_size_sat,
+        fee_rate_sat_vb=sender.fee_rate,
+        expiration_timestamp=planned_at + plan_lifetime_seconds,
+    )
+    _atomic_json(
+        paths.funding_capacity_plan_file,
+        _plan_payload(plan, status="PLANNED"),
+    )
+    manifest.update(
+        {
+            "state": "FUNDING_CAPACITY_PLANNED",
+            "funding_capacity_plan_id": plan.plan_id,
+            "funding_capacity_plan_path": str(paths.funding_capacity_plan_file),
+        }
+    )
+    _atomic_json(paths.manifest_file, manifest)
+    return plan, manifest
+
+
+def execute_live_funding_capacity_plan(
+    sender: RgbSettings,
+    *,
+    vault_root: Path,
+    note_id: str,
+    plan_id: str,
+    confirmation_phrase: str,
+    clock: Callable[[], float] = time.time,
+    sender_backend_opener: Callable[[RgbSettings], RgbLibBackend] = RgbLibBackend.open,
+) -> dict[str, object]:
+    """Create one source-wallet colorable UTXO after its own confirmation."""
+
+    _validate_sender(sender)
+    paths = LiveNotePaths.create(vault_root, note_id)
+    plan = _read_json(paths.funding_capacity_plan_file)
+    _capacity_plan_from_payload(plan)
+    manifest = _read_json(paths.manifest_file)
+    if plan.get("plan_id") != plan_id or plan.get("status") != "PLANNED":
+        raise LiveNoteConfirmationRequired("unknown or consumed funding-capacity plan")
+    if manifest.get("state") != "FUNDING_CAPACITY_PLANNED":
+        raise LiveNoteError("funding is not awaiting its capacity transaction")
+    if confirmation_phrase != f"CONFIRM {plan_id}":
+        raise LiveNoteConfirmationRequired("exact confirmation phrase is required")
+    if int(plan.get("expiration_timestamp", 0)) <= int(clock()):
+        raise LiveNoteConfirmationRequired("funding-capacity plan expired")
+
+    backend = sender_backend_opener(sender)
+    try:
+        plan = _read_json(paths.funding_capacity_plan_file)
+        manifest = _read_json(paths.manifest_file)
+        now = int(clock())
+        if plan.get("status") != "PLANNED" or manifest.get("state") != (
+            "FUNDING_CAPACITY_PLANNED"
+        ):
+            raise LiveNoteError("funding-capacity plan changed during validation")
+        if int(plan.get("expiration_timestamp", 0)) <= now:
+            raise LiveNoteConfirmationRequired("funding-capacity plan expired")
+        backend.refresh()
+        capacity = _capacity_snapshot(backend)
+        if capacity["vanilla_spendable"] != int(plan["vanilla_spendable_before"]):
+            raise LiveNoteConfirmationRequired(
+                "source BTC balance changed; review a new capacity plan"
+            )
+        if capacity["free_colorable_utxo_count"] != int(
+            plan["free_colorable_utxo_count_before"]
+        ):
+            raise LiveNoteConfirmationRequired(
+                "source RGB capacity changed; review a new capacity plan"
+            )
+        before = {
+            tx.txid for tx in backend._wallet.list_transactions(backend._online, False)
+        }
+        plan.update({"status": "CONFIRMATION_CONSUMED", "consumed_at": now})
+        manifest.update(
+            {
+                "state": "FUNDING_CAPACITY_BROADCAST_IN_PROGRESS",
+                "funding_capacity_confirmation_consumed_at": now,
+            }
+        )
+        _atomic_json(paths.funding_capacity_plan_file, plan)
+        _atomic_json(paths.manifest_file, manifest)
+        try:
+            created = backend._wallet.create_utxos(
+                backend._online,
+                False,
+                int(plan["utxo_count"]),
+                int(plan["utxo_size_sat"]),
+                int(plan["fee_rate_sat_vb"]),
+                False,
+            )
+        except Exception as exc:
+            plan.update(
+                {
+                    "status": "AMBIGUOUS",
+                    "last_error_type": type(exc).__name__,
+                    "last_error": str(exc),
+                }
+            )
+            manifest.update(
+                {
+                    "state": "FUNDING_CAPACITY_AMBIGUOUS",
+                    "last_error_type": type(exc).__name__,
+                    "last_error": str(exc),
+                }
+            )
+            _atomic_json(paths.funding_capacity_plan_file, plan)
+            _atomic_json(paths.manifest_file, manifest)
+            raise LiveNoteError(
+                "funding-capacity transaction outcome is ambiguous; do not retry"
+            ) from exc
+        after = [
+            tx
+            for tx in backend._wallet.list_transactions(backend._online, False)
+            if tx.txid not in before
+        ]
+    finally:
+        backend.close()
+    if int(created) != int(plan["utxo_count"]) or len(after) != 1:
+        plan.update(
+            {
+                "status": "AMBIGUOUS",
+                "last_error_type": "UnexpectedCapacityEvidence",
+                "last_error": "create_utxos returned without one exact transaction",
+            }
+        )
+        manifest.update(
+            {
+                "state": "FUNDING_CAPACITY_AMBIGUOUS",
+                "last_error_type": "UnexpectedCapacityEvidence",
+                "last_error": "create_utxos returned without one exact transaction",
+            }
+        )
+        _atomic_json(paths.funding_capacity_plan_file, plan)
+        _atomic_json(paths.manifest_file, manifest)
+        raise LiveNoteError(
+            "funding-capacity broadcast returned unexpected evidence; do not retry"
+        )
+    tx = after[0]
+    broadcast = {
+        "txid": tx.txid,
+        "created_colorable_utxos": int(created),
+        "transaction_type": _enum_name(tx.transaction_type),
+        "received_sat": int(tx.received),
+        "sent_sat": int(tx.sent),
+        "fee_sat": int(tx.fee),
+    }
+    plan.update({"status": "BROADCAST_RECORDED", "broadcast": broadcast})
+    manifest.update(
+        {"state": "FUNDING_CAPACITY_BROADCAST_RECORDED", "funding_capacity": broadcast}
+    )
+    _atomic_json(paths.funding_capacity_plan_file, plan)
+    _atomic_json(paths.manifest_file, manifest)
+    return {
+        "phase": "live-funding-capacity-broadcast",
+        "broadcast": True,
+        "note_id": note_id,
+        "plan_id": plan_id,
+        **broadcast,
+        "warning": "wait for one Mutinynet confirmation, then check the note",
+    }
+
+
+def refresh_live_funding_capacity(
+    sender: RgbSettings,
+    *,
+    vault_root: Path,
+    note_id: str,
+    clock: Callable[[], float] = time.time,
+    sender_backend_opener: Callable[[RgbSettings], RgbLibBackend] = RgbLibBackend.open,
+) -> dict[str, object]:
+    """Confirm the source capacity transaction and its one free RGB UTXO."""
+
+    _validate_sender(sender)
+    paths = LiveNotePaths.create(vault_root, note_id)
+    plan = _read_json(paths.funding_capacity_plan_file)
+    _capacity_plan_from_payload(plan)
+    manifest = _read_json(paths.manifest_file)
+    if plan.get("status") == "CAPACITY_CONFIRMED":
+        return {
+            "phase": "live-funding-capacity-ready",
+            "note_id": note_id,
+            "plan_id": str(plan["plan_id"]),
+            "confirmed": True,
+            "replayed": True,
+            **dict(plan.get("confirmation", {})),
+        }
+    if (
+        plan.get("status") != "BROADCAST_RECORDED"
+        or manifest.get("state") != "FUNDING_CAPACITY_BROADCAST_RECORDED"
+    ):
+        raise LiveNoteError("funding-capacity transaction is not ready for refresh")
+    broadcast = plan.get("broadcast")
+    if not isinstance(broadcast, dict) or not broadcast.get("txid"):
+        raise LiveNoteError("funding-capacity broadcast evidence is missing")
+
+    backend = sender_backend_opener(sender)
+    try:
+        backend.refresh()
+        matches = [
+            tx
+            for tx in backend._wallet.list_transactions(backend._online, False)
+            if tx.txid == broadcast["txid"]
+        ]
+        capacity = _capacity_snapshot(backend)
+    finally:
+        backend.close()
+    if len(matches) != 1:
+        raise LiveNoteError("funding-capacity transaction is missing from source wallet")
+    tx = matches[0]
+    confirmation_time = getattr(tx, "confirmation_time", None)
+    if confirmation_time is None:
+        return {
+            "phase": "live-funding-capacity-waiting",
+            "note_id": note_id,
+            "plan_id": str(plan["plan_id"]),
+            "txid": str(broadcast["txid"]),
+            "confirmed": False,
+            **capacity,
+        }
+    if capacity["free_colorable_utxo_count"] < 1:
+        raise LiveNoteError(
+            "funding-capacity transaction confirmed but no free colorable UTXO is visible"
+        )
+    confirmation = {
+        "txid": str(broadcast["txid"]),
+        "block_height": int(confirmation_time.height),
+        "block_timestamp": int(confirmation_time.timestamp),
+        "verified_at": int(clock()),
+        **capacity,
+    }
+    plan.update({"status": "CAPACITY_CONFIRMED", "confirmation": confirmation})
+    manifest.update(
+        {"state": "FUNDING_CAPACITY_READY", "funding_capacity_confirmation": confirmation}
+    )
+    _atomic_json(paths.funding_capacity_plan_file, plan)
+    _atomic_json(paths.manifest_file, manifest)
+    return {
+        "phase": "live-funding-capacity-ready",
+        "note_id": note_id,
+        "plan_id": str(plan["plan_id"]),
+        "confirmed": True,
+        "replayed": False,
+        **confirmation,
+    }
+
+
+def prepare_live_funding_after_capacity(
+    sender: RgbSettings,
+    *,
+    vault_root: Path,
+    note_id: str,
+    plan_lifetime_seconds: int = 900,
+    clock: Callable[[], float] = time.time,
+    id_factory: Callable[[], str] = lambda: str(uuid.uuid4()),
+    note_backend_opener: Callable[[RgbSettings], RgbLibBackend] = RgbLibBackend.open,
+    sender_backend_opener: Callable[[RgbSettings], RgbLibBackend] = RgbLibBackend.open,
+) -> tuple[LiveFundingPlan, dict[str, object]]:
+    """Archive the rejected funding plan after capacity and prepare a fresh one."""
+
+    _validate_sender(sender)
+    paths = LiveNotePaths.create(vault_root, note_id)
+    capacity = _read_json(paths.funding_capacity_plan_file)
+    manifest = _read_json(paths.manifest_file)
+    if (
+        capacity.get("status") != "CAPACITY_CONFIRMED"
+        or manifest.get("state") != "FUNDING_CAPACITY_READY"
+    ):
+        raise LiveNoteError("confirmed source capacity is required before re-planning")
+    previous = _read_json(paths.plan_file)
+    if previous.get("status") != "PRE_BROADCAST_REJECTED":
+        raise LiveNoteError("only the proven rejected funding plan may be superseded")
+    previous_id = str(previous.get("plan_id", ""))
+    archive = paths.plan_file.parent / f"funding-{previous_id}.json"
+    if archive.exists():
+        raise LiveNoteError("rejected funding plan archive already exists")
+    os.replace(paths.plan_file, archive)
+    previous.update(
+        {"status": "SUPERSEDED_AFTER_CAPACITY", "superseded_at": int(clock())}
+    )
+    _atomic_json(archive, previous)
+    manifest.update(
+        {
+            "state": "PLAN_RENEWAL_IN_PROGRESS",
+            "superseded_funding_plan_id": previous_id,
+            "superseded_funding_plan_path": str(archive),
+        }
+    )
+    _atomic_json(paths.manifest_file, manifest)
+    return _finish_live_funding_plan(
+        sender,
+        paths=paths,
+        manifest=manifest,
+        invoice_lifetime_seconds=86_400,
+        plan_lifetime_seconds=plan_lifetime_seconds,
+        clock=clock,
+        plan_id=id_factory(),
+        note_backend_opener=note_backend_opener,
+        sender_backend_opener=sender_backend_opener,
+    )
 
 
 def prepare_live_redemption_capacity_plan(
@@ -2516,7 +3450,10 @@ def renew_live_redemption_plan(
 
 
 def redacted_plan(
-    plan: LiveFundingPlan | LiveRedemptionPlan | LiveCapacityPlan,
+    plan: LiveFundingPlan
+    | LiveRedemptionPlan
+    | LiveCapacityPlan
+    | LiveBtcTopupPlan,
 ) -> dict[str, object]:
     """Return the complete public plan without local secret-bearing paths."""
 

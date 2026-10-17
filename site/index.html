@@ -151,8 +151,8 @@
             <span class="detail-symbol" aria-hidden="true">◎</span>
             <h3>Unknown final wallet</h3>
             <p>
-              Wallet B creates its invoice only at redemption. It was not known
-              when Wallet A funded the disposable note.
+              The holder's chosen dock creates its invoice only at redemption.
+              It was not known when the disposable note was funded.
             </p>
           </article>
           <article>
@@ -200,7 +200,7 @@
                 <span class="step-number">01</span
                 ><span
                   ><strong>Fund a disposable note</strong
-                  ><small>Wallet A → note wallet N</small></span
+                  ><small>Issuing wallet → note wallet N</small></span
                 ><span class="step-arrow" aria-hidden="true">↗</span>
               </button>
               <button
@@ -244,7 +244,7 @@
               >
                 <span class="step-number">04</span
                 ><span
-                  ><strong>Extract &amp; choose Wallet B</strong
+                  ><strong>Extract &amp; choose final wallet</strong
                   ><small>The final wallet was unknown before</small></span
                 ><span class="step-arrow" aria-hidden="true">↗</span>
               </button>
@@ -275,7 +275,7 @@
                 <span class="step-number">06</span
                 ><span
                   ><strong>Import &amp; settle</strong
-                  ><small>Wallet B verifies the exact $5 delta</small></span
+                  ><small>Chosen wallet verifies the exact $5 delta</small></span
                 ><span class="step-arrow" aria-hidden="true">↗</span>
               </button>
             </div>
@@ -307,8 +307,8 @@
               <p id="flow-tag" class="panel-tag">FIRST REAL RGB TRANSITION</p>
               <h3 id="flow-subtitle">Create one funded disposable note.</h3>
               <p id="flow-description">
-                Wallet A funds fresh note wallet N with exactly 5 USDT through
-                a transport-free invoice. The note becomes active only after
+                The issuing wallet funds fresh note wallet N with exactly 5
+                USDT through a transport-free invoice. The note becomes active only after
                 its exact receive transfer settles.
               </p>
               <div class="panel-footer">
@@ -328,7 +328,7 @@
           <noscript
             ><p class="flow-note">
               The six steps are: fund note N; load the capsule; pass it offline;
-              extract it and choose Wallet B; confirm one redemption; import
+              extract it and choose the final wallet; confirm one redemption; import
               and settle the exact $5 assignment. Enable JavaScript to explore
               each step.
             </p></noscript
@@ -530,7 +530,9 @@
           <h2 id="limits-title">A working prototype.<br />Not magic cash.</h2>
           <p class="section-copy">
             The offline experience is real, but its trust assumptions are part
-            of the result—not footnotes hidden from the demo.
+            of the result—not footnotes hidden from the demo. We target minimal
+            identity disclosure and cash-like interchangeability, not proven
+            cryptographic anonymity or strict fungibility.
           </p>
         </div>
         <div class="intro-details">

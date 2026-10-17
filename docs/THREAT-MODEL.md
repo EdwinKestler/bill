@@ -44,7 +44,10 @@ that the prototype solves offline double spending.
 | Copied capsule redeemed twice | salted claim hash, atomic reservation, first recorded send wins, durable `SPENT` state | Fastest valid copy wins; offline holders cannot detect the copy |
 | Ambiguous send repeated | confirmation consumed before send; `AMBIGUOUS` blocks automatic retry; broadcast/journal persisted before success | Manual reconciliation may be required |
 | Import or BLE staging failure causes resend | exact consignment retained; stage/import-only recovery paths cannot call send | Operator must follow the recovery instruction |
-| Wrong/duplicate Wallet B transfer marked settled | exact txid, `receive_witness`, one 5,000,000-unit assignment, and recorded balance delta are all required | Relies on pinned rgb-lib semantics and indexer correctness |
+| Wrong/duplicate destination transfer marked settled | exact destination fingerprint, invoice hash, txid, `receive_witness`, one 5,000,000-unit assignment, and recorded balance delta are all required | Relies on pinned rgb-lib semantics and indexer correctness |
+| Issuer learns or chooses final holder wallet | no destination exists in the funding plan or capsule; a fresh invoice is created only after the holder reaches a dock | Trusted vault can correlate issuance and redemption timing later |
+| Intermediary identity leaks during relay | capsule has no person/account/final-wallet identity and BLE advertisements contain no artifact metadata | BLE device addresses and physical proximity remain locally observable |
+| Another dock loads an issuer's active vault note | private manifest binds new notes to the issuing wallet fingerprint; web load filters by the open wallet | Shared-host administrator or vault compromise defeats this boundary |
 | Malformed or oversized BLE payload | strict frame version/kind/session/order/CRC; 640 KiB limit; atomic promotion | CRC32 is corruption detection, not adversarial authentication |
 | Stale/orphaned device file overwritten | inventory v3 `recovery-blocked`; explicit discard only | Physical attacker can still alter flash |
 | Fake capsule amount shown as authentic | vault revalidates canonical capsule and claim hash at redemption | Firmware cannot authenticate issuer offline; display is provisional |
@@ -59,7 +62,7 @@ that the prototype solves offline double spending.
 3. A consumed confirmation cannot authorize a replacement plan.
 4. Unknown send outcome means no automatic resend.
 5. A retained artifact is recovery state, never `empty`.
-6. Wallet B becomes `REDEEMED` only after exact settlement evidence.
+6. The chosen destination wallet becomes `REDEEMED` only after exact settlement evidence.
 7. Clearing a bill never rewrites the vault's claim or wallet history.
 
 ## Production gaps

@@ -1,6 +1,6 @@
 # Live evidence ledger
 
-Updated: 2026-10-15 22:30 CEST
+Updated: 2026-10-17 CEST
 Network: Mutinynet/custom signet only
 
 This is the canonical public index of real RGB and physical-transport evidence
@@ -33,6 +33,32 @@ The final settlement refresh is idempotent: replay returned the recorded result
 without reopening Wallet B or creating another send. The private plan,
 manifest, and journal files were mode `0600` at acceptance.
 
+## Reciprocal web-dock bearer cycle
+
+The second accepted run exercised the same bearer design in the opposite
+direction: Wallet B issued the note, the bills relayed it without a dock or
+network between them, and Wallet A was selected only at redemption. This run
+also exercised the guarded web/QVAC preparation path and the dock-funded
+Bitcoin-capacity steps introduced for the demo UX.
+
+| Stage | Accepted evidence |
+| --- | --- |
+| Disposable note | note ID `b4a03f79-9f32-4717-8f55-49e0f2130b70`; isolated ignored wallet N |
+| Funding capacity | txid [`b3427bbbe07dcf25c27d7871f2ecc1a8db9dff8cd0a818d831b455b28980294b`](https://mutinynet.com/tx/b3427bbbe07dcf25c27d7871f2ecc1a8db9dff8cd0a818d831b455b28980294b); immutable plan `416460b1-1f77-4496-82cb-3fa8110a4f06`; `CAPACITY_CONFIRMED` |
+| Wallet B → note N | plan `6dd3424a-a886-484c-ad8a-179a7ddb717f`; txid [`4e5c6c9401a0a1b7d778b61215ea70cb81a42619a528a597cdef27e51d70494d`](https://mutinynet.com/tx/4e5c6c9401a0a1b7d778b61215ea70cb81a42619a528a597cdef27e51d70494d); exactly 5,000,000 units; funding consignment 13,823 bytes; SHA-256 `3da2347962ab4ece5dd967b2a1a77ee7136353c20af7f8fa22cf456a371aaaea` |
+| Funding settlement | note transfer `receive_witness`, batch `1`, `settled`; note settled/future/spendable all 5,000,000 |
+| Bearer capsule | canonical v1; 603 bytes; SHA-256 `64144586afa3e97964059a27edb56d5b03fe76df677d51770e03e57abcc3517f` |
+| Offline physical relay | TTGO → WEMOS; kind `0x04`; session `0x2704e0f2`; 4 BLE frames; WEMOS restored the same 603-byte artifact after reboot |
+| Destination extraction | Dock A extracted the capsule and matched SHA-256 exactly before parsing or planning; WEMOS cleared only after the final ACK |
+| Redemption capacity | txid [`3d9dfb341d129c9debf56e0b36f6a266fa4bdcfaceb2818b5c34a442850e6557`](https://mutinynet.com/tx/3d9dfb341d129c9debf56e0b36f6a266fa4bdcfaceb2818b5c34a442850e6557); immutable plan `683706d6-1781-4000-9dcd-46a6bf425756`; `CAPACITY_CONFIRMED` |
+| Note N → Wallet A | plan `1cdf2221-a670-4915-939d-f0c09c4ea2fc`; txid [`83fa1a8b1eb61c6bbd7509d723f9cd02a28b5f848017c8dbbe6f1eee0d2506c9`](https://mutinynet.com/tx/83fa1a8b1eb61c6bbd7509d723f9cd02a28b5f848017c8dbbe6f1eee0d2506c9); redemption consignment 14,533 bytes; SHA-256 `2b1878607c085bc46ea7dd602c0da80e16bca691845a2b316da78093aadc2a89` |
+| Wallet A settlement | exact txid match; batch `10`; `receive_witness`; one 5,000,000-unit assignment; balance 45,000,000 → 50,000,000; settled/future/spendable all 50,000,000 |
+| Durable terminal state | funding `FUNDING_SETTLED`; redemption plan `REDEEMED`; manifest `REDEEMED`; claim `SPENT` |
+
+The browser's temporary `$0` startup display was not the authoritative
+pre-redemption balance. The refreshed rgb-lib wallet journal proved the actual
+Wallet A transition was 45,000,000 → 50,000,000 units.
+
 ## Accepted direct-mode fallback
 
 The original human-first invoice/consignment path remains a working fallback.
@@ -55,8 +81,10 @@ not separate claims about the bearer-note architecture.
 - empty RGB transport endpoints and exact out-of-band consignments;
 - byte-exact BLE transport and reboot persistence on two ESP32 profiles;
 - an unknown-at-issuance final wallet chosen only at redemption;
+- either reference dock wallet can issue or redeem the complete bearer value;
+- local QVAC can map the primary preparation request into the guarded web flow;
 - one-use confirmation, durable recovery records, and no automatic resend;
-- exact Wallet B assignment and settled-balance verification.
+- exact destination assignment and settled-balance verification.
 
 ## What this does not prove
 
@@ -65,14 +93,15 @@ not separate claims about the bearer-note architecture.
 - offline double-spend prevention: a copied capsule is first-redemption-wins;
 - offline issuer authentication: capsule v1 has integrity hashing but no
   device-verifiable signature;
-- a completed QVAC action integration or WDK integration;
+- a completed fixed adversarial QVAC intent evaluation or WDK integration;
 - production web authentication, secure-element resistance, or network-level
   anonymity.
 
-## Local validation at acceptance
+## Local validation at release
 
-- Python: `125 passed`;
-- focused settlement tests: `21 passed`;
+- Python: `165 passed`;
+- native firmware protocol: `13 passed`;
+- WEMOS `esp32-bill` production build: passed;
+- TTGO `ttgo-lora32-oled-test` production build: passed;
 - `git diff --check`: passed;
-- Palimnex parent index: incremental, fresh, deep validation passed;
 - public evidence intentionally excludes ignored `.note-vault/` contents.
